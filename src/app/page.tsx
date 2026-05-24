@@ -6,7 +6,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { calculatePredictionScore } from "../lib/scoring.js";
 
-type Screen = "inicio" | "partidos" | "tabla" | "global" | "liga" | "share" | "perfil";
+type Screen = "inicio" | "partidos" | "tabla" | "liga" | "share" | "perfil";
 
 type Team = {
   id: string;
@@ -335,7 +335,6 @@ function Nav({ screen, setScreen }: { screen: Screen; setScreen: (screen: Screen
     { id: "inicio", label: "Inicio", icon: "◉" },
     { id: "partidos", label: "Partidos", icon: "◫" },
     { id: "tabla", label: "Tabla", icon: "◬" },
-    { id: "global", label: "Global", icon: "⌖" },
     { id: "liga", label: "Liga", icon: "◐" },
     { id: "share", label: "Share", icon: "◍" },
     { id: "perfil", label: "Perfil", icon: "◎" },
@@ -573,10 +572,28 @@ type LeaderboardRow = {
 };
 
 type BoardTab = "general" | "semana" | "exactos";
+type BoardScope = "liga" | "global";
+type GlobalRow = LeaderboardRow & { favoriteTeam?: string };
 
 function LeaderboardScreen({ leagueId, currentUserId }: { leagueId: Id<"leagues"> | null; currentUserId: Id<"users"> | null }) {
+  const [scope, setScope] = useState<BoardScope>("liga");
   const [tab, setTab] = useState<BoardTab>("general");
-  const rows = useQuery(api.picks.leagueLeaderboard, leagueId ? { leagueId } : "skip");
+
+  const leagueRows = useQuery(api.picks.leagueLeaderboard, leagueId && scope === "liga" ? { leagueId } : "skip");
+  const globalRows = useQuery(api.tournaments.globalLeaderboard, scope === "global" ? { limit: 100 } : "skip") as
+    | GlobalRow[]
+    | undefined;
+  const tournament = useQuery(api.tournaments.getActive, scope === "global" ? {} : "skip");
+  const ensureActive = useMutation(api.tournaments.ensureActive);
+
+  useEffect(() => {
+    if (scope === "global" && tournament === null) {
+      ensureActive({}).catch(() => undefined);
+    }
+  }, [scope, tournament, ensureActive]);
+
+  const rows = scope === "liga" ? leagueRows : globalRows;
+
   const rankedRows = useMemo(() => {
     const source = ([...(rows ?? [])] as LeaderboardRow[]);
     if (tab === "exactos") {
@@ -587,15 +604,45 @@ function LeaderboardScreen({ leagueId, currentUserId }: { leagueId: Id<"leagues"
     }
     return source.sort((a, b) => b.points - a.points || b.exacts - a.exacts || b.correctResults - a.correctResults || b.picks - a.picks);
   }, [rows, tab]);
+
   const myIndex = rankedRows.findIndex((row) => row.userId === currentUserId);
   const leader = rankedRows[0];
   const meRanked = myIndex >= 0 ? rankedRows[myIndex] : undefined;
   const podium = [rankedRows[1], rankedRows[0], rankedRows[2]];
   const deltaToLeader = leader && meRanked ? Math.max(0, leader.points - meRanked.points) : 0;
+  const totalPicks = rankedRows.reduce((sum, row) => sum + row.picks, 0);
+
+  const meta = scope === "liga"
+    ? `actualizado hace 2min · ${rankedRows.length || 0} miembros`
+    : `${tournament?.name ?? "Mundial 2026"} · ${rankedRows.length} ${rankedRows.length === 1 ? "jugador" : "jugadores"} · ${totalPicks} jugadas`;
+
+  const emptyMessage = scope === "liga"
+    ? (!leagueId ? "Crea o únete a una liga para ver la tabla." : "Aún no hay jugadas registradas.")
+    : "Aún no hay jugadas registradas. Sé el primero.";
+
+  const loading = scope === "liga" ? leagueRows === undefined && !!leagueId : globalRows === undefined;
+  const showEmpty = scope === "liga" ? !leagueId || (rows && rows.length === 0) : rows && rows.length === 0;
 
   return (
     <div className="leaderboard-phone">
-      <div className="board-meta">actualizado hace 2min · {rankedRows.length || 0} miembros</div>
+      <div className="board-scope" role="tablist" aria-label="Alcance del ranking">
+        {([
+          { id: "liga" as const, label: "Mi liga" },
+          { id: "global" as const, label: "Global" },
+        ]).map((item) => (
+          <button
+            type="button"
+            role="tab"
+            aria-selected={scope === item.id}
+            className={scope === item.id ? "active" : ""}
+            onClick={() => setScope(item.id)}
+            key={item.id}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div className="board-meta">{meta}</div>
       <div className="board-tabs" role="tablist" aria-label="Tabla de posiciones">
         {(["general", "semana", "exactos"] as const).map((item) => (
           <button type="button" role="tab" aria-selected={tab === item} className={tab === item ? "active" : ""} onClick={() => setTab(item)} key={item}>
@@ -603,15 +650,13 @@ function LeaderboardScreen({ leagueId, currentUserId }: { leagueId: Id<"leagues"
           </button>
         ))}
       </div>
-      {!leagueId ? (
-        <EmptyState message="Crea o únete a una liga para ver la tabla." />
-      ) : !rows ? (
+      {loading ? (
         <EmptyState message="Cargando tabla…" />
-      ) : rows.length === 0 ? (
-        <EmptyState message="Aún no hay jugadas registradas." />
+      ) : showEmpty ? (
+        <EmptyState message={emptyMessage} />
       ) : (
         <>
-          <section className="podium" aria-label="Podio de la liga">
+          <section className="podium" aria-label="Podio">
             {podium.map((row, slot) =>
               row ? <PodiumPerson row={row} rank={slot === 0 ? 2 : slot === 1 ? 1 : 3} isMe={row.userId === currentUserId} key={row.userId} /> : <div key={slot} />
             )}
@@ -627,88 +672,19 @@ function LeaderboardScreen({ leagueId, currentUserId }: { leagueId: Id<"leagues"
             <div className="rank-callout">
               <strong>#{myIndex + 1}</strong>
               <span className="mini-avatar">{meRanked.avatar}</span>
-              <p><b>vos · {meRanked.points} pts</b><small>↑ subiste 2 puestos esta semana</small></p>
-              <em>{deltaToLeader > 0 ? `a ${deltaToLeader}pts del 🏆` : "líder del 🏆"}</em>
-            </div>
-          ) : null}
-        </>
-      )}
-    </div>
-  );
-}
-
-type GlobalRow = LeaderboardRow & { favoriteTeam?: string };
-
-function GlobalLeaderboardScreen({ currentUserId }: { currentUserId: Id<"users"> | null }) {
-  const tournament = useQuery(api.tournaments.getActive, {});
-  const ensureActive = useMutation(api.tournaments.ensureActive);
-  const rows = useQuery(api.tournaments.globalLeaderboard, { limit: 100 }) as
-    | GlobalRow[]
-    | undefined;
-
-  // Seed the tournament row on first mount so the header has a name.
-  useEffect(() => {
-    if (tournament === null) {
-      ensureActive({}).catch(() => undefined);
-    }
-  }, [tournament, ensureActive]);
-
-  const myIndex = rows ? rows.findIndex((row) => row.userId === currentUserId) : -1;
-  const meRow = myIndex >= 0 ? rows![myIndex] : undefined;
-  const leader = rows?.[0];
-  const podium = rows ? [rows[1], rows[0], rows[2]] : [];
-  const deltaToLeader = leader && meRow ? Math.max(0, leader.points - meRow.points) : 0;
-  const totalPlayers = rows?.length ?? 0;
-  const totalPicks = rows?.reduce((sum, row) => sum + row.picks, 0) ?? 0;
-
-  return (
-    <div className="leaderboard-phone">
-      <div className="board-meta">
-        Ranking global · {tournament?.name ?? "Mundial 2026"} · {totalPlayers}{" "}
-        {totalPlayers === 1 ? "jugador" : "jugadores"} · {totalPicks} jugadas
-      </div>
-      {!rows ? (
-        <EmptyState message="Cargando ranking global…" />
-      ) : rows.length === 0 ? (
-        <EmptyState message="Aún no hay jugadas registradas. Sé el primero." />
-      ) : (
-        <>
-          <section className="podium" aria-label="Podio global">
-            {podium.map((row, slot) =>
-              row ? (
-                <PodiumPerson
-                  row={row}
-                  rank={slot === 0 ? 2 : slot === 1 ? 1 : 3}
-                  isMe={row.userId === currentUserId}
-                  key={row.userId}
-                />
-              ) : (
-                <div key={slot} />
-              )
-            )}
-          </section>
-
-          <section className="leader-list" aria-label="Ranking global">
-            {rows.map((row, index) => (
-              <LeaderboardCard
-                row={row}
-                rank={index + 1}
-                isMe={row.userId === currentUserId}
-                isLeader={index === 0}
-                key={row.userId}
-              />
-            ))}
-          </section>
-
-          {meRow ? (
-            <div className="rank-callout">
-              <strong>#{myIndex + 1}</strong>
-              <span className="mini-avatar">{meRow.avatar}</span>
               <p>
-                <b>vos · {meRow.points} pts</b>
-                <small>{meRow.exacts} exactos · {meRow.correctResults} resultados</small>
+                <b>vos · {meRanked.points} pts</b>
+                <small>
+                  {scope === "global"
+                    ? `${meRanked.exacts} exactos · ${meRanked.correctResults} resultados`
+                    : "↑ subiste 2 puestos esta semana"}
+                </small>
               </p>
-              <em>{deltaToLeader > 0 ? `a ${deltaToLeader}pts del 🏆 global` : "líder global 🏆"}</em>
+              <em>
+                {deltaToLeader > 0
+                  ? `a ${deltaToLeader}pts del 🏆${scope === "global" ? " global" : ""}`
+                  : `líder${scope === "global" ? " global" : " del 🏆"}`}
+              </em>
             </div>
           ) : null}
         </>
@@ -1739,7 +1715,7 @@ export default function Home() {
   }
 
   return (
-    <main className={`real-app ${screen === "tabla" || screen === "global" ? "focus-screen" : ""}`}>
+    <main className={`real-app ${screen === "tabla" ? "focus-screen" : ""}`}>
       <Nav screen={screen} setScreen={setScreen} />
       <section className="app-main">
         <div className="topbar-wrap">
@@ -1755,7 +1731,6 @@ export default function Home() {
         )}
         {screen === "partidos" && <MatchesScreen picks={picks} openPick={openPick} />}
         {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} />}
-        {screen === "global" && <GlobalLeaderboardScreen currentUserId={userId} />}
         {screen === "liga" && <LeagueScreen leagueId={activeLeagueId} leagues={leagues} setActive={setActive} onLeave={handleLeave} onInvite={handleInvite} currentUser={user} />}
         {screen === "share" && <ShareScreen league={activeLeague ?? null} currentUserId={userId} toast={setToast} />}
         {screen === "perfil" && (

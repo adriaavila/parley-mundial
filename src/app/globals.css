@@ -668,6 +668,32 @@ button {
   font-weight: 500;
 }
 
+.board-scope {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.board-scope button {
+  height: 56px;
+  border: 2px solid rgba(255, 255, 255, 0.09);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.035);
+  color: rgba(245, 245, 240, 0.78);
+  font-family: var(--display);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.board-scope button.active {
+  border-color: transparent;
+  background: var(--lime, #d6f255);
+  color: #101113;
+}
+
 .board-tabs {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
