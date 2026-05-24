@@ -2,6 +2,14 @@ import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  tournaments: defineTable({
+    slug: v.string(),
+    name: v.string(),
+    startsAt: v.number(),
+    endsAt: v.number(),
+    active: v.boolean(),
+  }).index("by_slug", ["slug"]),
+
   users: defineTable({
     anonId: v.optional(v.string()),
     email: v.optional(v.string()),

@@ -6,7 +6,7 @@ import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { calculatePredictionScore } from "../lib/scoring.js";
 
-type Screen = "inicio" | "partidos" | "tabla" | "liga" | "share" | "perfil";
+type Screen = "inicio" | "partidos" | "tabla" | "global" | "liga" | "share" | "perfil";
 
 type Team = {
   id: string;
@@ -335,6 +335,7 @@ function Nav({ screen, setScreen }: { screen: Screen; setScreen: (screen: Screen
     { id: "inicio", label: "Inicio", icon: "◉" },
     { id: "partidos", label: "Partidos", icon: "◫" },
     { id: "tabla", label: "Tabla", icon: "◬" },
+    { id: "global", label: "Global", icon: "⌖" },
     { id: "liga", label: "Liga", icon: "◐" },
     { id: "share", label: "Share", icon: "◍" },
     { id: "perfil", label: "Perfil", icon: "◎" },
@@ -343,8 +344,8 @@ function Nav({ screen, setScreen }: { screen: Screen; setScreen: (screen: Screen
   return (
     <nav className="app-nav">
       <div className="brand">
-        <strong>Parleyia</strong>
-        <span>La jugada mundialera</span>
+        <strong>ParlAI</strong>
+        <span>Mundial 2026</span>
       </div>
       {items.map((item) => (
         <button className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)} key={item.id}>
@@ -636,6 +637,86 @@ function LeaderboardScreen({ leagueId, currentUserId }: { leagueId: Id<"leagues"
   );
 }
 
+type GlobalRow = LeaderboardRow & { favoriteTeam?: string };
+
+function GlobalLeaderboardScreen({ currentUserId }: { currentUserId: Id<"users"> | null }) {
+  const tournament = useQuery(api.tournaments.getActive, {});
+  const ensureActive = useMutation(api.tournaments.ensureActive);
+  const rows = useQuery(api.tournaments.globalLeaderboard, { limit: 100 }) as
+    | GlobalRow[]
+    | undefined;
+
+  // Seed the tournament row on first mount so the header has a name.
+  useEffect(() => {
+    if (tournament === null) {
+      ensureActive({}).catch(() => undefined);
+    }
+  }, [tournament, ensureActive]);
+
+  const myIndex = rows ? rows.findIndex((row) => row.userId === currentUserId) : -1;
+  const meRow = myIndex >= 0 ? rows![myIndex] : undefined;
+  const leader = rows?.[0];
+  const podium = rows ? [rows[1], rows[0], rows[2]] : [];
+  const deltaToLeader = leader && meRow ? Math.max(0, leader.points - meRow.points) : 0;
+  const totalPlayers = rows?.length ?? 0;
+  const totalPicks = rows?.reduce((sum, row) => sum + row.picks, 0) ?? 0;
+
+  return (
+    <div className="leaderboard-phone">
+      <div className="board-meta">
+        Ranking global · {tournament?.name ?? "Mundial 2026"} · {totalPlayers}{" "}
+        {totalPlayers === 1 ? "jugador" : "jugadores"} · {totalPicks} jugadas
+      </div>
+      {!rows ? (
+        <EmptyState message="Cargando ranking global…" />
+      ) : rows.length === 0 ? (
+        <EmptyState message="Aún no hay jugadas registradas. Sé el primero." />
+      ) : (
+        <>
+          <section className="podium" aria-label="Podio global">
+            {podium.map((row, slot) =>
+              row ? (
+                <PodiumPerson
+                  row={row}
+                  rank={slot === 0 ? 2 : slot === 1 ? 1 : 3}
+                  isMe={row.userId === currentUserId}
+                  key={row.userId}
+                />
+              ) : (
+                <div key={slot} />
+              )
+            )}
+          </section>
+
+          <section className="leader-list" aria-label="Ranking global">
+            {rows.map((row, index) => (
+              <LeaderboardCard
+                row={row}
+                rank={index + 1}
+                isMe={row.userId === currentUserId}
+                isLeader={index === 0}
+                key={row.userId}
+              />
+            ))}
+          </section>
+
+          {meRow ? (
+            <div className="rank-callout">
+              <strong>#{myIndex + 1}</strong>
+              <span className="mini-avatar">{meRow.avatar}</span>
+              <p>
+                <b>vos · {meRow.points} pts</b>
+                <small>{meRow.exacts} exactos · {meRow.correctResults} resultados</small>
+              </p>
+              <em>{deltaToLeader > 0 ? `a ${deltaToLeader}pts del 🏆 global` : "líder global 🏆"}</em>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
 function PodiumPerson({ row, rank, isMe }: { row: LeaderboardRow; rank: 1 | 2 | 3; isMe: boolean }) {
   return (
     <article className={`podium-person podium-${rank}`}>
@@ -705,9 +786,14 @@ function AuthScreen({
     <main className="auth-shell">
       <section className="auth-card glass-strong">
         <div className="auth-copy">
-          <span>Parleyia</span>
+          <span>ParlAI Mundial 2026</span>
           <h1>Bienvenido a la jugada mundialera.</h1>
           <p>Arma tu perfil antes del pitazo, crea una liga y empieza a pelear la tabla del Mundial.</p>
+          <p style={{ marginTop: 14 }}>
+            <a href="/landing" style={{ color: "var(--lime)", fontFamily: "var(--mono)", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", textDecoration: "none" }}>
+              ¿Primera vez? Conoce cómo funciona →
+            </a>
+          </p>
         </div>
         <form
           className="auth-form"
@@ -1079,9 +1165,9 @@ function ShareScreen({
     if (!canvas) return;
     canvas.toBlob(async (blob) => {
       if (!blob) return;
-      const file = new File([blob], `parleyia-${kind}.png`, { type: "image/png" });
+      const file = new File([blob], `parlai-${kind}.png`, { type: "image/png" });
       if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: "Parleyia" }).catch(() => undefined);
+        await navigator.share({ files: [file], title: "ParlAI Mundial 2026" }).catch(() => undefined);
       } else {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
@@ -1121,7 +1207,7 @@ function pad(n: number, len = 2) {
 }
 
 function buildIcs() {
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Parleyia//Mundial 2026//ES", "CALSCALE:GREGORIAN"];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ParlAI//Mundial 2026//ES", "CALSCALE:GREGORIAN"];
   for (const fixture of fixtures) {
     const home = getTeam(fixture.home);
     const away = getTeam(fixture.away);
@@ -1131,7 +1217,7 @@ function buildIcs() {
       `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
     lines.push(
       "BEGIN:VEVENT",
-      `UID:${fixture.id}@parleyia`,
+      `UID:${fixture.id}@parlai-mundial`,
       `DTSTAMP:${fmt(new Date())}`,
       `DTSTART:${fmt(start)}`,
       `DTEND:${fmt(end)}`,
@@ -1203,11 +1289,11 @@ function ProfileScreenInner({
         };
       }),
     };
-    downloadFile("parleyia-picks.json", JSON.stringify(payload, null, 2), "application/json");
+    downloadFile("parlai-picks.json", JSON.stringify(payload, null, 2), "application/json");
   };
 
   const downloadCalendar = () => {
-    downloadFile("parleyia-mundial-2026.ics", buildIcs(), "text/calendar");
+    downloadFile("parlai-mundial-2026.ics", buildIcs(), "text/calendar");
   };
 
   return (
@@ -1326,7 +1412,7 @@ function Onboarding({
     <div className="onboarding">
       <section className="onboarding-card glass-strong">
         <button className="close" onClick={close} aria-label="Cerrar">×</button>
-        <span>Bienvenido a Parleyia</span>
+        <span>Bienvenido a ParlAI Mundial</span>
         <h1>Predice el Mundial con tu liga, sin hojas raras ni chats perdidos.</h1>
 
         {mode === "intro" ? (
@@ -1474,12 +1560,12 @@ export default function Home() {
     const onBeforeInstallPrompt = (event: Event) => {
       event.preventDefault();
       setInstallPrompt(event as BeforeInstallPromptEvent);
-      setToast("Instala Parleyia como app");
+      setToast("Instala ParlAI como app");
     };
     window.addEventListener("beforeinstallprompt", onBeforeInstallPrompt);
     const fallback = window.setTimeout(() => {
       setInstallHint(true);
-      setToast("Instala Parleyia en tu pantalla de inicio");
+      setToast("Instala ParlAI en tu pantalla de inicio");
     }, 1400);
     return () => {
       window.removeEventListener("beforeinstallprompt", onBeforeInstallPrompt);
@@ -1611,7 +1697,7 @@ export default function Home() {
     const choice = await installPrompt.userChoice;
     setInstallPrompt(null);
     setInstallHint(false);
-    setToast(choice.outcome === "accepted" ? "Parleyia instalada" : "Instalación cancelada");
+    setToast(choice.outcome === "accepted" ? "ParlAI instalada" : "Instalación cancelada");
   };
 
   const leagueName = activeLeague?.name ?? "Sin liga activa";
@@ -1653,7 +1739,7 @@ export default function Home() {
   }
 
   return (
-    <main className={`real-app ${screen === "tabla" ? "focus-screen" : ""}`}>
+    <main className={`real-app ${screen === "tabla" || screen === "global" ? "focus-screen" : ""}`}>
       <Nav screen={screen} setScreen={setScreen} />
       <section className="app-main">
         <div className="topbar-wrap">
@@ -1669,6 +1755,7 @@ export default function Home() {
         )}
         {screen === "partidos" && <MatchesScreen picks={picks} openPick={openPick} />}
         {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} />}
+        {screen === "global" && <GlobalLeaderboardScreen currentUserId={userId} />}
         {screen === "liga" && <LeagueScreen leagueId={activeLeagueId} leagues={leagues} setActive={setActive} onLeave={handleLeave} onInvite={handleInvite} currentUser={user} />}
         {screen === "share" && <ShareScreen league={activeLeague ?? null} currentUserId={userId} toast={setToast} />}
         {screen === "perfil" && (

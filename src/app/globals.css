@@ -1,5 +1,15 @@
 @import "tailwindcss";
 
+/* Scope Tailwind class scanning. Without this Tailwind v4 walks the whole project
+   root (including .next, convex/_generated, public assets, tests) on every dev
+   compile, which is the root cause of the long initial Turbopack build. */
+@source "../";
+@source not "../../convex/_generated";
+@source not "../../.next";
+@source not "../../public";
+@source not "../../tests";
+@source not "../../node_modules";
+
 :root {
   --bg-0: #08090b;
   --bg-1: #0e1115;
@@ -2001,4 +2011,78 @@ button {
     justify-content: space-between;
     transform: none;
   }
+}
+
+/* ---------- Landing (/landing) tokens, theme + animations ---------- */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-whatsapp: var(--whatsapp);
+  --font-display: var(--font-anton), 'Anton', sans-serif;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --ease-out-expo: cubic-bezier(0.19, 1, 0.22, 1);
+}
+
+.landing-scope {
+  --radius: 0.75rem;
+  --background: oklch(0.13 0.02 264);
+  --foreground: oklch(0.98 0.005 247);
+  --card: oklch(0.17 0.02 264);
+  --card-foreground: oklch(0.98 0.005 247);
+  --popover: oklch(0.17 0.02 264);
+  --popover-foreground: oklch(0.98 0.005 247);
+  --primary: oklch(0.92 0.22 125);
+  --primary-foreground: oklch(0.13 0.02 264);
+  --secondary: oklch(0.22 0.02 264);
+  --secondary-foreground: oklch(0.98 0.005 247);
+  --muted: oklch(0.22 0.02 264);
+  --muted-foreground: oklch(0.7 0.02 264);
+  --accent: oklch(0.22 0.02 264);
+  --accent-foreground: oklch(0.98 0.005 247);
+  --destructive: oklch(0.65 0.22 25);
+  --destructive-foreground: oklch(0.98 0.005 247);
+  --border: oklch(0.98 0.005 247 / 0.1);
+  --input: oklch(0.98 0.005 247 / 0.15);
+  --ring: oklch(0.92 0.22 125);
+  --whatsapp: oklch(0.7 0.16 150);
+}
+
+@keyframes reveal-up {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.animate-reveal {
+  animation: reveal-up 0.8s var(--ease-out-expo) both;
+}
+
+.animate-marquee {
+  animation: marquee 40s linear infinite;
 }

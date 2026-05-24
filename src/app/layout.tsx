@@ -23,27 +23,27 @@ const siteUrl =
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 const description =
-  "Predicciones, ligas y banderas reales para vivir el Mundial 2026 con tus amigos.";
+  "Pronósticos del Mundial 2026 con tus amigos. Crea ligas privadas, invita por WhatsApp y demuestra quién sabe más de fútbol.";
 
 export const metadata: Metadata = {
   title: {
-    default: "Parleyia · La Jugada Mundialera",
-    template: "%s · Parleyia",
+    default: "ParlAI Mundial 2026 — Domina el Pronóstico",
+    template: "%s · ParlAI Mundial",
   },
   description,
   metadataBase: new URL(siteUrl),
-  applicationName: "Parleyia",
+  applicationName: "ParlAI Mundial",
   openGraph: {
-    title: "Parleyia · La Jugada Mundialera",
+    title: "ParlAI Mundial 2026 — Domina el Pronóstico",
     description,
     url: siteUrl,
-    siteName: "Parleyia",
+    siteName: "ParlAI Mundial",
     type: "website",
     locale: "es_ES",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Parleyia · La Jugada Mundialera",
+    title: "ParlAI Mundial 2026 — Domina el Pronóstico",
     description,
   },
   robots: {
@@ -72,7 +72,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <noscript>
           <div style={{ padding: "24px", color: "#f7f8f4", background: "#08090b" }}>
-            Parleyia necesita JavaScript activado para mostrar el calendario y tus jugadas.
+            ParlAI Mundial necesita JavaScript activado para mostrar el calendario y tus jugadas.
           </div>
         </noscript>
         <Providers>{children}</Providers>

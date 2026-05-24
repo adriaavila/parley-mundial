@@ -2,9 +2,9 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Parleyia · La Jugada Mundialera",
-    short_name: "Parleyia",
-    description: "Predicciones, ligas y chat mundialero para competir con tus amigos.",
+    name: "ParlAI Mundial 2026",
+    short_name: "ParlAI",
+    description: "Pronósticos del Mundial 2026 con ligas privadas. Compite con tus amigos por WhatsApp.",
     start_url: "/",
     scope: "/",
     display: "standalone",
