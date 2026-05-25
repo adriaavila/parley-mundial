@@ -1,12 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { calculatePredictionScore } from "../lib/scoring.js";
 
-type Screen = "inicio" | "partidos" | "tabla" | "liga" | "share" | "perfil";
+type Screen = "inicio" | "partidos" | "tabla" | "liga" | "perfil";
 
 type Team = {
   id: string;
@@ -336,7 +336,6 @@ function Nav({ screen, setScreen }: { screen: Screen; setScreen: (screen: Screen
     { id: "partidos", label: "Partidos", icon: "◫" },
     { id: "tabla", label: "Tabla", icon: "◬" },
     { id: "liga", label: "Liga", icon: "◐" },
-    { id: "share", label: "Share", icon: "◍" },
     { id: "perfil", label: "Perfil", icon: "◎" },
   ];
 
@@ -386,12 +385,14 @@ function TopBar({
 function HomeScreen({
   picks,
   openPick,
+  savePickFor,
   go,
   pendingCount,
   leagues,
 }: {
   picks: Record<string, LocalPick>;
   openPick: (fixture: Fixture) => void;
+  savePickFor: (fixture: Fixture, pick: LocalPick) => Promise<void>;
   go: (screen: Screen) => void;
   pendingCount: number;
   leagues: LeagueSummary[];
@@ -399,6 +400,7 @@ function HomeScreen({
   const next = nextOpenFixture(picks);
   const countdown = useCountdown(next.utc);
   const bestRank = leagues.map((league) => league.myRank).filter((rank): rank is number => Boolean(rank)).sort((a, b) => a - b)[0];
+  const upcoming = fixtures.filter((fixture) => !isFixtureLocked(fixture)).slice(0, 6);
 
   return (
     <div className="screen-grid">
@@ -425,14 +427,15 @@ function HomeScreen({
       <section className="quick-actions">
         <button className="glass" onClick={() => go("partidos")}>Predecir pendientes</button>
         <button className="glass" onClick={() => go("liga")}>Invitar panas</button>
-        <button className="glass" onClick={() => go("share")}>Compartir story</button>
+        <button className="glass" onClick={() => go("perfil")}>Compartir story</button>
       </section>
 
       <section className="content-card glass">
-        <SectionTitle kicker="Próximos" title="Partidos para jugar" action="Ver calendario" onAction={() => go("partidos")} />
-        <div className="match-list compact">
-          {fixtures.filter((fixture) => !isFixtureLocked(fixture)).slice(0, 6).map((fixture) => (
-            <MatchRow fixture={fixture} pick={picks[fixture.id]} onPick={() => openPick(fixture)} key={fixture.id} />
+        <SectionTitle kicker="Próximos" title="Predice rápido" action="Ver calendario" onAction={() => go("partidos")} />
+        <p className="section-hint">Toca el ganador o ajusta el marcador. Se guarda solo.</p>
+        <div className="match-list">
+          {upcoming.map((fixture) => (
+            <InlinePickRow fixture={fixture} pick={picks[fixture.id]} savePickFor={savePickFor} key={fixture.id} />
           ))}
         </div>
       </section>
@@ -493,7 +496,15 @@ function SectionTitle({ kicker, title, action, onAction }: { kicker: string; tit
   );
 }
 
-function MatchesScreen({ picks, openPick }: { picks: Record<string, LocalPick>; openPick: (fixture: Fixture) => void }) {
+function MatchesScreen({
+  picks,
+  savePickFor,
+  openPick,
+}: {
+  picks: Record<string, LocalPick>;
+  savePickFor: (fixture: Fixture, pick: LocalPick) => Promise<void>;
+  openPick: (fixture: Fixture) => void;
+}) {
   const [group, setGroup] = useState("Todos");
   const [query, setQuery] = useState("");
   const [onlyOpen, setOnlyOpen] = useState(false);
@@ -505,12 +516,14 @@ function MatchesScreen({ picks, openPick }: { picks: Record<string, LocalPick>; 
     return (group === "Todos" || fixture.group === group) && text.includes(query.toLowerCase()) && (!onlyOpen || (!picks[fixture.id] && !isFixtureLocked(fixture)));
   });
 
+  const openCount = fixtures.filter((fixture) => !isFixtureLocked(fixture) && !picks[fixture.id]).length;
+
   return (
     <div className="screen-stack">
       <div className="screen-heading">
         <span>Fixture real</span>
-        <h1>Calendario Mundial 2026</h1>
-        <p>72 partidos de fase de grupos con cruces, fechas, horarios publicados, sedes y ciudades.</p>
+        <h1>Predice varios partidos a la vez</h1>
+        <p>Toca el ganador o ajusta el marcador con ± y se guarda solo. Te quedan {openCount} jugadas pendientes.</p>
       </div>
 
       <div className="filters glass">
@@ -526,36 +539,187 @@ function MatchesScreen({ picks, openPick }: { picks: Record<string, LocalPick>; 
 
       <div className="match-list">
         {filtered.map((fixture) => (
-          <MatchRow fixture={fixture} pick={picks[fixture.id]} onPick={() => openPick(fixture)} key={fixture.id} />
+          <InlinePickRow
+            fixture={fixture}
+            pick={picks[fixture.id]}
+            savePickFor={savePickFor}
+            onExpand={() => openPick(fixture)}
+            key={fixture.id}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function MatchRow({ fixture, pick, onPick }: { fixture: Fixture; pick?: LocalPick; onPick: () => void }) {
+type SaveState = "idle" | "saving" | "saved" | "error";
+
+function InlinePickRow({
+  fixture,
+  pick,
+  savePickFor,
+  onExpand,
+}: {
+  fixture: Fixture;
+  pick?: LocalPick;
+  savePickFor: (fixture: Fixture, pick: LocalPick) => Promise<void>;
+  onExpand?: () => void;
+}) {
   const home = getTeam(fixture.home);
   const away = getTeam(fixture.away);
   const locked = isFixtureLocked(fixture);
   const status = fixtureStatus(fixture);
 
+  const [draft, setDraft] = useState<{ home: number; away: number } | null>(
+    pick ? { home: pick.home, away: pick.away } : null
+  );
+  const [state, setState] = useState<SaveState>("idle");
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const lastSavedRef = useRef<string | null>(pick ? `${pick.home}-${pick.away}` : null);
+  const pendingRef = useRef<{ home: number; away: number } | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (pick) {
+      const key = `${pick.home}-${pick.away}`;
+      if (lastSavedRef.current !== key) {
+        lastSavedRef.current = key;
+        setDraft({ home: pick.home, away: pick.away });
+      }
+    }
+  }, [pick]);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
+  }, []);
+
+  const flush = useCallback(async () => {
+    const next = pendingRef.current;
+    if (!next) return;
+    pendingRef.current = null;
+    setState("saving");
+    setErrorMsg(null);
+    try {
+      await savePickFor(fixture, { home: next.home, away: next.away, bonus: pick?.bonus ?? [] });
+      lastSavedRef.current = `${next.home}-${next.away}`;
+      setState("saved");
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setState("idle"), 1400);
+    } catch (err) {
+      setState("error");
+      setErrorMsg(err instanceof Error ? err.message : "Error");
+    }
+  }, [fixture, pick?.bonus, savePickFor]);
+
+  const queue = useCallback(
+    (homeScore: number, awayScore: number) => {
+      if (locked) return;
+      setDraft({ home: homeScore, away: awayScore });
+      pendingRef.current = { home: homeScore, away: awayScore };
+      if (timerRef.current) clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(flush, 550);
+    },
+    [flush, locked]
+  );
+
+  const dirty = draft !== null && lastSavedRef.current !== `${draft.home}-${draft.away}`;
+
+  const quickPick = (h: number, a: number) => queue(h, a);
+  const bump = (side: "home" | "away", delta: number) => {
+    const base = draft ?? { home: 1, away: 1 };
+    const homeVal = side === "home" ? Math.max(0, Math.min(9, base.home + delta)) : base.home;
+    const awayVal = side === "away" ? Math.max(0, Math.min(9, base.away + delta)) : base.away;
+    queue(homeVal, awayVal);
+  };
+
+  const winnerActive = (kind: "home" | "draw" | "away") => {
+    if (!draft) return false;
+    if (kind === "home") return draft.home > draft.away;
+    if (kind === "away") return draft.away > draft.home;
+    return draft.home === draft.away;
+  };
+
+  const statusBadge =
+    state === "saving"
+      ? "Guardando…"
+      : state === "saved"
+        ? "Guardada"
+        : state === "error"
+          ? errorMsg ?? "Error"
+          : !draft
+            ? "Sin jugada"
+            : dirty
+              ? "Sin guardar"
+              : "Guardada";
+
   return (
-    <article className={`match-row glass ${locked ? "locked" : ""}`}>
-      <div className="match-time">
-        <strong>{dateLabel(fixture.date)}</strong>
-        <span>{fixture.time}</span>
+    <article className={`pick-row glass ${locked ? "locked" : ""} pick-state-${state} ${dirty ? "dirty" : ""}`}>
+      <header className="pick-row-head">
+        <div className="pick-row-meta">
+          <strong>{dateLabel(fixture.date)} · {fixture.time}</strong>
+          <span>Grupo {fixture.group} · Partido {fixture.matchNo} · {status === "scheduled" ? "Abierto" : status === "live" ? "Cerrado" : "Finalizado"}</span>
+        </div>
+        <span className={`pick-status pick-status-${state} ${dirty && state === "idle" ? "pick-status-dirty" : ""} ${!draft ? "pick-status-empty" : ""}`}>{locked ? "Cerrado" : statusBadge}</span>
+      </header>
+
+      <div className="pick-row-body">
+        <button
+          type="button"
+          className={`pick-side ${winnerActive("home") ? "active" : ""}`}
+          onClick={() => bump("home", 1)}
+          disabled={locked}
+          aria-label={`Sumar gol a ${home.name}`}
+        >
+          <TeamBadge id={home.id} size={44} />
+          <strong>{home.name}</strong>
+          <span>{home.code}</span>
+        </button>
+
+        <div className="pick-score">
+          <div className="pick-score-cell">
+            <button type="button" onClick={() => bump("home", -1)} disabled={locked} aria-label="Menos local">−</button>
+            <b style={{ color: home.accent }}>{draft ? draft.home : "·"}</b>
+            <button type="button" onClick={() => bump("home", 1)} disabled={locked} aria-label="Más local">+</button>
+          </div>
+          <em>vs</em>
+          <div className="pick-score-cell">
+            <button type="button" onClick={() => bump("away", -1)} disabled={locked} aria-label="Menos visitante">−</button>
+            <b style={{ color: away.accent }}>{draft ? draft.away : "·"}</b>
+            <button type="button" onClick={() => bump("away", 1)} disabled={locked} aria-label="Más visitante">+</button>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          className={`pick-side right ${winnerActive("away") ? "active" : ""}`}
+          onClick={() => bump("away", 1)}
+          disabled={locked}
+          aria-label={`Sumar gol a ${away.name}`}
+        >
+          <TeamBadge id={away.id} size={44} />
+          <strong>{away.name}</strong>
+          <span>{away.code}</span>
+        </button>
       </div>
-      <div className="match-teams">
-        <span><TeamBadge id={home.id} /> <strong>{home.name}</strong></span>
-        <b>vs</b>
-        <span><TeamBadge id={away.id} /> <strong>{away.name}</strong></span>
-      </div>
-      <div className="match-venue">
-        <span>Grupo {fixture.group} · Partido {fixture.matchNo} · {status === "scheduled" ? "Abierto" : status === "live" ? "Cerrado" : "Finalizado"}</span>
-        <strong>{fixture.venue}</strong>
-        <small>{fixture.city}</small>
-      </div>
-      <button onClick={onPick} disabled={locked}>{pick ? `${pick.home}-${pick.away}` : locked ? "Cerrado" : "Jugar"}</button>
+
+      <footer className="pick-row-foot">
+        <div className="pick-quick">
+          <button type="button" className={winnerActive("home") ? "active" : ""} onClick={() => quickPick(1, 0)} disabled={locked}>Gana {home.code} 1-0</button>
+          <button type="button" className={winnerActive("draw") ? "active" : ""} onClick={() => quickPick(1, 1)} disabled={locked}>Empate 1-1</button>
+          <button type="button" className={winnerActive("away") ? "active" : ""} onClick={() => quickPick(0, 1)} disabled={locked}>Gana {away.code} 0-1</button>
+        </div>
+        {onExpand ? (
+          <button type="button" className="pick-detail" onClick={onExpand} disabled={locked}>
+            {fixture.venue}, {fixture.city} →
+          </button>
+        ) : (
+          <span className="pick-venue">{fixture.venue} · {fixture.city}</span>
+        )}
+      </footer>
     </article>
   );
 }
@@ -739,6 +903,11 @@ function EmptyState({ message }: { message: string }) {
   );
 }
 
+const AVATAR_EMOJIS = [
+  "⚽","🏆","🥇","🔥","⚡","🎯","💥","👑","🦁","🐯","🐺","🦊","🐉","🦅","🐂","🦈",
+  "🚀","🌟","💎","🎲","🎮","🎧","🥶","😎","🤘","🫡","🧉","🍻","🌮","🥁","🪩","🛡️",
+] as const;
+
 function AuthScreen({
   onSignup,
   onLogin,
@@ -798,15 +967,30 @@ function AuthScreen({
             <>
               <label><span>Nombre de guerra</span><input name="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Leo del grupo" required minLength={2} /></label>
               <label><span>Handle</span><input name="handle" value={handle} onChange={(event) => setHandle(event.target.value)} placeholder="leomundial" required /></label>
-              <div className="profile-mini-grid">
-                <label><span>Avatar</span><input name="avatar" value={avatar} onChange={(event) => setAvatar(event.target.value)} maxLength={4} /></label>
-                <label>
-                  <span>Favorita</span>
-                  <select name="favoriteTeam" value={favoriteTeam} onChange={(event) => setFavoriteTeam(event.target.value)}>
-                    {teams.slice(0, 48).map((team) => <option value={team.id} key={team.id}>{team.flag} {team.name}</option>)}
-                  </select>
-                </label>
-              </div>
+              <label>
+                <span>Avatar</span>
+                <input type="hidden" name="avatar" value={avatar} />
+                <div className="avatar-picker" role="radiogroup" aria-label="Elige tu avatar">
+                  {AVATAR_EMOJIS.map((emoji) => (
+                    <button
+                      type="button"
+                      role="radio"
+                      aria-checked={avatar === emoji}
+                      className={`avatar-option ${avatar === emoji ? "active" : ""}`}
+                      onClick={() => setAvatar(emoji)}
+                      key={emoji}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </label>
+              <label>
+                <span>Favorita</span>
+                <select name="favoriteTeam" value={favoriteTeam} onChange={(event) => setFavoriteTeam(event.target.value)}>
+                  {teams.slice(0, 48).map((team) => <option value={team.id} key={team.id}>{team.flag} {team.name}</option>)}
+                </select>
+              </label>
             </>
           ) : null}
           <label><span>Email</span><input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="tu@email.com" required /></label>
@@ -1092,7 +1276,7 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: num
   ctx.fillText(line, x, y);
 }
 
-function ShareScreen({
+function ProfileShareSection({
   league,
   currentUserId,
   toast,
@@ -1104,7 +1288,10 @@ function ShareScreen({
   const rows = useQuery(api.picks.leagueLeaderboard, league ? { leagueId: league._id } : "skip");
   const myIndex = rows?.findIndex((row: LeaderboardRow) => row.userId === currentUserId) ?? -1;
   const myRow = myIndex >= 0 ? (rows?.[myIndex] as LeaderboardRow) : null;
-  const topFive = rows?.slice(0, 5).map((row: LeaderboardRow, index: number) => `#${index + 1} ${row.name} ${row.points} pts`).join(" · ");
+  const topFive = rows
+    ?.slice(0, 5)
+    .map((row: LeaderboardRow, index: number) => `#${index + 1} ${row.name} ${row.points} pts`)
+    .join(" · ");
 
   const share = async (kind: "invite" | "rank" | "top" | "perfect" | "rivalry") => {
     if (!league) return;
@@ -1118,7 +1305,9 @@ function ShareScreen({
       rank: {
         title: myRow ? `Voy #${myIndex + 1} en mi liga mundialera.` : "La tabla no miente.",
         subtitle: league.name,
-        detail: myRow ? `${myRow.points} puntos · ${myRow.exacts} exactos · ${myRow.correctResults} resultados` : "Haz tus jugadas y pelea el liderato.",
+        detail: myRow
+          ? `${myRow.points} puntos · ${myRow.exacts} exactos · ${myRow.correctResults} resultados`
+          : "Haz tus jugadas y pelea el liderato.",
       },
       top: {
         title: "Top 5 mundialero",
@@ -1159,13 +1348,15 @@ function ShareScreen({
   };
 
   return (
-    <div className="screen-stack">
+    <>
       <div className="screen-heading">
         <span>Instagram stories</span>
-        <h1>Comparte la pelea.</h1>
+        <h2>Comparte la pelea.</h2>
         <p>Cards 9:16 listas para ranking, invitación, top 5, predicción perfecta y rivalidad.</p>
       </div>
-      {!league ? <EmptyState message="Crea o únete a una liga para compartir." /> : (
+      {!league ? (
+        <EmptyState message="Crea o únete a una liga para compartir." />
+      ) : (
         <div className="share-grid">
           <button className="share-tile glass" onClick={() => share("invite")}><strong>Invitación</strong><span>Únete a mi liga · {league.code}</span></button>
           <button className="share-tile glass" onClick={() => share("rank")}><strong>Mi ranking</strong><span>{myRow ? `Vas #${myIndex + 1}` : "Aún sin ranking"}</span></button>
@@ -1174,53 +1365,16 @@ function ShareScreen({
           <button className="share-tile glass" onClick={() => share("rivalry")}><strong>Rivalidad</strong><span>Te falta fútbol</span></button>
         </div>
       )}
-    </div>
+    </>
   );
-}
-
-function pad(n: number, len = 2) {
-  return n.toString().padStart(len, "0");
-}
-
-function buildIcs() {
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//ParlAI//Mundial 2026//ES", "CALSCALE:GREGORIAN"];
-  for (const fixture of fixtures) {
-    const home = getTeam(fixture.home);
-    const away = getTeam(fixture.away);
-    const start = new Date(`${fixture.date}T${fixture.time}:00Z`);
-    const end = new Date(start.getTime() + 2 * 60 * 60 * 1000);
-    const fmt = (d: Date) =>
-      `${d.getUTCFullYear()}${pad(d.getUTCMonth() + 1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}00Z`;
-    lines.push(
-      "BEGIN:VEVENT",
-      `UID:${fixture.id}@parlai-mundial`,
-      `DTSTAMP:${fmt(new Date())}`,
-      `DTSTART:${fmt(start)}`,
-      `DTEND:${fmt(end)}`,
-      `SUMMARY:${home.name} vs ${away.name} (Grupo ${fixture.group})`,
-      `LOCATION:${fixture.venue}\\, ${fixture.city}`,
-      "END:VEVENT"
-    );
-  }
-  lines.push("END:VCALENDAR");
-  return lines.join("\r\n");
-}
-
-function downloadFile(name: string, content: string, mime: string) {
-  const blob = new Blob([content], { type: mime });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
 }
 
 function ProfileScreen(props: {
   picks: Record<string, LocalPick>;
   leagueName: string;
+  league: LeagueSummary | null;
+  currentUserId: Id<"users"> | null;
+  toast: (message: string) => void;
   onShowOnboarding: () => void;
   onUpdate: (profile: { name: string; handle: string; avatar: string; favoriteTeam?: string }) => void;
   onLogout: () => void;
@@ -1232,6 +1386,9 @@ function ProfileScreen(props: {
 function ProfileScreenInner({
   picks,
   leagueName,
+  league,
+  currentUserId,
+  toast,
   onShowOnboarding,
   onUpdate,
   onLogout,
@@ -1239,6 +1396,9 @@ function ProfileScreenInner({
 }: {
   picks: Record<string, LocalPick>;
   leagueName: string;
+  league: LeagueSummary | null;
+  currentUserId: Id<"users"> | null;
+  toast: (message: string) => void;
   onShowOnboarding: () => void;
   onUpdate: (profile: { name: string; handle: string; avatar: string; favoriteTeam?: string }) => void;
   onLogout: () => void;
@@ -1246,36 +1406,17 @@ function ProfileScreenInner({
 }) {
   const [name, setName] = useState(user.name);
   const [handle, setHandle] = useState(user.handle);
-  const [avatar, setAvatar] = useState(user.avatar);
+  const initialAvatar = (AVATAR_EMOJIS as readonly string[]).includes(user.avatar) ? user.avatar : AVATAR_EMOJIS[0];
+  const [avatar, setAvatar] = useState<string>(initialAvatar);
   const [favoriteTeam, setFavoriteTeam] = useState(user.favoriteTeam ?? "");
 
-  const exportPicks = () => {
-    const payload = {
-      exportedAt: new Date().toISOString(),
-      league: leagueName,
-      picks: Object.entries(picks).map(([fixtureId, pick]) => {
-        const fixture = fixtures.find((f) => f.id === fixtureId);
-        return {
-          fixtureId,
-          matchNo: fixture?.matchNo ?? null,
-          home: fixture ? getTeam(fixture.home).name : null,
-          away: fixture ? getTeam(fixture.away).name : null,
-          score: `${pick.home}-${pick.away}`,
-          bonus: pick.bonus,
-        };
-      }),
-    };
-    downloadFile("parlai-picks.json", JSON.stringify(payload, null, 2), "application/json");
-  };
-
-  const downloadCalendar = () => {
-    downloadFile("parlai-mundial-2026.ics", buildIcs(), "text/calendar");
-  };
+  void picks;
+  void leagueName;
 
   return (
     <div className="screen-stack">
       <div className="profile-header glass-strong">
-        <div className="profile-avatar">{avatar || (name[0] ?? "V").toUpperCase()}</div>
+        <div className="profile-avatar">{avatar}</div>
         <div>
           <span>@{handle}</span>
           <h1>Tu perfil mundialero</h1>
@@ -1292,7 +1433,20 @@ function ProfileScreenInner({
       >
         <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Tu nombre" maxLength={40} />
         <input value={handle} onChange={(event) => setHandle(event.target.value)} placeholder="handle" maxLength={18} />
-        <input value={avatar} onChange={(event) => setAvatar(event.target.value)} placeholder="avatar" maxLength={4} />
+        <div className="avatar-picker" role="radiogroup" aria-label="Elige tu avatar">
+          {AVATAR_EMOJIS.map((emoji) => (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={avatar === emoji}
+              className={`avatar-option ${avatar === emoji ? "active" : ""}`}
+              onClick={() => setAvatar(emoji)}
+              key={emoji}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
         <select value={favoriteTeam} onChange={(event) => setFavoriteTeam(event.target.value)}>
           <option value="">Sin favorita</option>
           {teams.map((team) => <option value={team.id} key={team.id}>{team.flag} {team.name}</option>)}
@@ -1300,10 +1454,14 @@ function ProfileScreenInner({
         <button type="submit">Guardar</button>
       </form>
 
+      <ProfileShareSection
+        league={league}
+        currentUserId={currentUserId}
+        toast={toast}
+      />
+
       <div className="settings-grid">
         <button className="glass" onClick={onShowOnboarding}>Ver onboarding otra vez</button>
-        <button className="glass" onClick={exportPicks}>Exportar picks (JSON)</button>
-        <button className="glass" onClick={downloadCalendar}>Descargar calendario (.ics)</button>
         <button className="glass" onClick={onLogout}>Cerrar sesión</button>
       </div>
     </div>
@@ -1563,18 +1721,32 @@ export default function Home() {
     [picks]
   );
 
-  const savePick = async (pick: LocalPick) => {
-    if (!selected || !userId || !activeLeagueId) return;
-    setSavingPick(true);
-    try {
+  const savePickFor = useCallback(
+    async (fixture: Fixture, pick: LocalPick) => {
+      if (!userId || !activeLeagueId) {
+        if (!activeLeagueId) {
+          setToast("Crea o únete a una liga primero");
+          setShowOnboarding(true);
+        }
+        throw new Error("Sin liga activa");
+      }
       await savePickMutation({
         leagueId: activeLeagueId,
         userId,
-        fixtureId: selected.id,
+        fixtureId: fixture.id,
         home: pick.home,
         away: pick.away,
         bonus: pick.bonus,
       });
+    },
+    [activeLeagueId, savePickMutation, userId]
+  );
+
+  const savePickFromModal = async (pick: LocalPick) => {
+    if (!selected) return;
+    setSavingPick(true);
+    try {
+      await savePickFor(selected, pick);
       setToast("Jugada guardada");
       setSelected(null);
     } catch (err) {
@@ -1727,16 +1899,27 @@ export default function Home() {
           />
         </div>
         {screen === "inicio" && (
-          <HomeScreen picks={picks} openPick={openPick} go={setScreen} pendingCount={pendingCount} leagues={leagues} />
+          <HomeScreen
+            picks={picks}
+            openPick={openPick}
+            savePickFor={savePickFor}
+            go={setScreen}
+            pendingCount={pendingCount}
+            leagues={leagues}
+          />
         )}
-        {screen === "partidos" && <MatchesScreen picks={picks} openPick={openPick} />}
+        {screen === "partidos" && (
+          <MatchesScreen picks={picks} savePickFor={savePickFor} openPick={openPick} />
+        )}
         {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} />}
         {screen === "liga" && <LeagueScreen leagueId={activeLeagueId} leagues={leagues} setActive={setActive} onLeave={handleLeave} onInvite={handleInvite} currentUser={user} />}
-        {screen === "share" && <ShareScreen league={activeLeague ?? null} currentUserId={userId} toast={setToast} />}
         {screen === "perfil" && (
           <ProfileScreen
             picks={picks}
             leagueName={leagueName}
+            league={activeLeague ?? null}
+            currentUserId={userId}
+            toast={setToast}
             onShowOnboarding={() => setShowOnboarding(true)}
             onUpdate={handleUpdateProfile}
             onLogout={logout}
@@ -1749,7 +1932,7 @@ export default function Home() {
           fixture={selected}
           initial={picks[selected.id]}
           close={() => setSelected(null)}
-          save={savePick}
+          save={savePickFromModal}
           saving={savingPick}
         />
       )}
