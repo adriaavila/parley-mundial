@@ -330,13 +330,22 @@ function TeamBadge({ id, size = 42 }: { id: string; size?: number }) {
   );
 }
 
+function NavIcon({ id }: { id: Screen }) {
+  const p = { width: 20, height: 20, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round" as const, strokeLinejoin: "round" as const };
+  if (id === "inicio") return <svg {...p}><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
+  if (id === "partidos") return <svg {...p}><circle cx="12" cy="12" r="10"/><path d="M4.93 4.93l4.24 4.24M14.83 9.17l4.24-4.24M14.83 14.83l4.24 4.24M9.17 14.83l-4.24 4.24"/></svg>;
+  if (id === "tabla") return <svg {...p}><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>;
+  if (id === "liga") return <svg {...p}><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>;
+  return <svg {...p}><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+}
+
 function Nav({ screen, setScreen }: { screen: Screen; setScreen: (screen: Screen) => void }) {
-  const items: { id: Screen; label: string; icon: string }[] = [
-    { id: "inicio", label: "Inicio", icon: "◉" },
-    { id: "partidos", label: "Partidos", icon: "◫" },
-    { id: "tabla", label: "Tabla", icon: "◬" },
-    { id: "liga", label: "Liga", icon: "◐" },
-    { id: "perfil", label: "Perfil", icon: "◎" },
+  const items: { id: Screen; label: string }[] = [
+    { id: "inicio", label: "Inicio" },
+    { id: "partidos", label: "Partidos" },
+    { id: "tabla", label: "Tabla" },
+    { id: "liga", label: "Liga" },
+    { id: "perfil", label: "Perfil" },
   ];
 
   return (
@@ -347,7 +356,7 @@ function Nav({ screen, setScreen }: { screen: Screen; setScreen: (screen: Screen
       </div>
       {items.map((item) => (
         <button className={screen === item.id ? "active" : ""} onClick={() => setScreen(item.id)} key={item.id}>
-          <span>{item.icon}</span>
+          <span className="nav-icon"><NavIcon id={item.id} /></span>
           {item.label}
         </button>
       ))}
@@ -630,7 +639,7 @@ function InlinePickRow({
 
   const quickPick = (h: number, a: number) => queue(h, a);
   const bump = (side: "home" | "away", delta: number) => {
-    const base = draft ?? { home: 1, away: 1 };
+    const base = pendingRef.current ?? draft ?? { home: 1, away: 1 };
     const homeVal = side === "home" ? Math.max(0, Math.min(9, base.home + delta)) : base.home;
     const awayVal = side === "away" ? Math.max(0, Math.min(9, base.away + delta)) : base.away;
     queue(homeVal, awayVal);
