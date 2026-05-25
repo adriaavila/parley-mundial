@@ -2046,7 +2046,7 @@ button {
     z-index: 60;
     height: auto;
     display: grid;
-    grid-template-columns: repeat(6, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     padding: 8px;
     border: 1px solid var(--line-2);
     border-radius: 24px;
