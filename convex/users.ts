@@ -396,3 +396,28 @@ export const seedDevUser = mutation({
   },
 });
 
+export const deleteUserByEmail = mutation({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", normalizeEmail(email)))
+      .unique();
+    if (user) {
+      const sessions = await ctx.db
+        .query("sessions")
+        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .collect();
+      for (const session of sessions) {
+        await ctx.db.delete(session._id);
+      }
+      await ctx.db.delete(user._id);
+      console.log(`Deleted user and sessions for: ${email}`);
+      return true;
+    }
+    console.log(`User not found: ${email}`);
+    return false;
+  },
+});
+
+
