@@ -302,8 +302,7 @@ export const sendResetCode = action({
   handler: async (ctx, { email }) => {
     const result = await ctx.runMutation(internal.users.generateAndStoreResetCode, { email });
     if (!result) {
-      // Return true to avoid leaking user presence
-      return true;
+      throw new Error("No existe una cuenta registrada con ese email.");
     }
 
     const apiKey = process.env.RESEND_API_KEY;

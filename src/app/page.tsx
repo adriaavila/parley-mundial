@@ -2414,7 +2414,7 @@ export default function Home() {
     setAuthError(null);
     try {
       await sendResetCode(args);
-      setToast("Código enviado. Búscalo en la consola de tu terminal.");
+      setToast("Código enviado. Revisa tu correo.");
     } catch (err) {
       setAuthError(cleanAuthError(err, "Error al enviar código"));
       throw err;
