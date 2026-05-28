@@ -1,24 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useConvexAuth, useMutation, useQuery } from "convex/react";
-import { useAuthActions } from "@convex-dev/auth/react";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { calculatePredictionScore } from "../lib/scoring.js";
-
-function cleanErrorMessage(err: unknown, fallback: string): string {
-  if (!err) return "";
-  const rawMessage = err instanceof Error ? err.message : String(err);
-  
-  // Extract first line of error message (strips server-side Convex trace if any)
-  let msg = rawMessage.split("\n")[0];
-  
-  // Remove common Convex and general error prefixes
-  msg = msg.replace(/^(Mutation failed|Query failed|Error|ConvexError|Uncaught Error):\s*/i, "");
-  
-  return msg || fallback;
-}
 
 type Screen = "inicio" | "partidos" | "tabla" | "liga" | "perfil";
 
@@ -259,33 +245,87 @@ function useCountdown(target: string) {
 }
 
 function useAuth() {
-  const { signIn, signOut } = useAuthActions();
-  const { isAuthenticated, isLoading } = useConvexAuth();
-  const profile = useQuery(api.users.me) as AuthUser | null | undefined;
+  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const signupMutation = useMutation(api.users.signup);
+  const loginMutation = useMutation(api.users.login);
+  const logoutMutation = useMutation(api.users.logout);
+  const sendResetCodeMutation = useMutation(api.users.sendResetCode);
+  const resetPasswordWithCodeMutation = useMutation(api.users.resetPasswordWithCode);
+  const profile = useQuery(api.users.me, sessionToken ? { sessionToken } : "skip") as AuthUser | null | undefined;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get("token");
+      const join = urlParams.get("join");
+      if (token) {
+        window.localStorage.setItem("parleyia:session", token);
+        const cleanUrl = join ? `/?join=${join}` : "/";
+        window.history.replaceState({}, document.title, cleanUrl);
+        setSessionToken(token);
+      } else {
+        setSessionToken(window.localStorage.getItem("parleyia:session"));
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  const persist = useCallback((token: string) => {
+    window.localStorage.setItem("parleyia:session", token);
+    setSessionToken(token);
+  }, []);
 
   const signup = useCallback(
     async (args: { email: string; password: string; name: string; handle: string; avatar: string; favoriteTeam?: string }) => {
-      await signIn("password", { ...args, flow: "signUp" });
+      const result = await signupMutation(args);
+      persist(result.sessionToken);
       window.localStorage.removeItem("parleyia:onboarded");
+      return result;
     },
-    [signIn]
+    [persist, signupMutation]
   );
 
   const login = useCallback(
     async (args: { email: string; password: string }) => {
-      await signIn("password", { ...args, flow: "signIn" });
+      const result = await loginMutation(args);
+      persist(result.sessionToken);
+      return result;
     },
-    [signIn]
+    [loginMutation, persist]
   );
 
   const logout = useCallback(async () => {
+    const token = sessionToken;
+    window.localStorage.removeItem("parleyia:session");
     window.localStorage.removeItem("parleyia:activeLeague");
-    await signOut();
-  }, [signOut]);
+    setSessionToken(null);
+    if (token) await logoutMutation({ sessionToken: token }).catch(() => undefined);
+  }, [logoutMutation, sessionToken]);
 
-  const sessionToken = "convex-auth";
+  const sendResetCode = useCallback(
+    async (args: { email: string }) => {
+      await sendResetCodeMutation(args);
+    },
+    [sendResetCodeMutation]
+  );
 
-  return { sessionToken, user: profile ?? null, loading: isLoading || (isAuthenticated && profile === undefined), signup, login, logout, signIn };
+  const resetPasswordWithCode = useCallback(
+    async (args: { email: string; code: string; newPassword: string }) => {
+      await resetPasswordWithCodeMutation(args);
+    },
+    [resetPasswordWithCodeMutation]
+  );
+
+  return {
+    sessionToken,
+    user: profile ?? null,
+    loading: Boolean(sessionToken && profile === undefined),
+    signup,
+    login,
+    logout,
+    sendResetCode,
+    resetPasswordWithCode,
+  };
 }
 
 function useActiveLeague(leagues: { _id: Id<"leagues"> }[] | undefined) {
@@ -619,7 +659,7 @@ function InlinePickRow({
       savedTimerRef.current = setTimeout(() => setState("idle"), 1400);
     } catch (err) {
       setState("error");
-      setErrorMsg(cleanErrorMessage(err, "Error"));
+      setErrorMsg(err instanceof Error ? err.message : "Error");
     }
   }, [fixture, pick, savePickFor]);
 
@@ -932,7 +972,6 @@ function AuthScreen({
   onLogin,
   onReset,
   onVerifyReset,
-  onGoogleLogin,
   busy,
   error,
 }: {
@@ -940,7 +979,6 @@ function AuthScreen({
   onLogin: (args: { email: string; password: string }) => void;
   onReset: (args: { email: string }) => Promise<void>;
   onVerifyReset: (args: { email: string; code: string; newPassword: string }) => Promise<void>;
-  onGoogleLogin: () => void;
   busy: boolean;
   error: string | null;
 }) {
@@ -953,7 +991,6 @@ function AuthScreen({
   const [favoriteTeam, setFavoriteTeam] = useState("arg");
   const [showPassword, setShowPassword] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
-  const [resetCode, setResetCode] = useState("");
 
   // Easy Sign Up / Custom Password States
   const [passwordMode, setPasswordMode] = useState<"easy" | "custom">("easy");
@@ -998,22 +1035,8 @@ function AuthScreen({
       <section className="auth-card glass-strong">
         <div className="auth-copy">
           <span>ParlAI Mundial 2026</span>
-          {mode === "forgot" ? (
-            <>
-              <h1>Recuperar acceso.</h1>
-              <p>Ingresa tu correo para recibir un código de recuperación en la consola de desarrollo.</p>
-            </>
-          ) : mode === "reset-code" ? (
-            <>
-              <h1>Restablecer clave.</h1>
-              <p>Ingresa el código impreso en la terminal y tu nueva contraseña de guerra.</p>
-            </>
-          ) : (
-            <>
-              <h1>Bienvenido a la jugada mundialera.</h1>
-              <p>Arma tu perfil antes del pitazo, crea una liga y empieza a pelear la tabla del Mundial.</p>
-            </>
-          )}
+          <h1>Bienvenido a la jugada mundialera.</h1>
+          <p>Arma tu perfil antes del pitazo, crea una liga y empieza a pelear la tabla del Mundial.</p>
           <p style={{ marginTop: 14 }}>
             <a href="/landing" style={{ color: "var(--lime)", fontFamily: "var(--mono)", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", textDecoration: "none" }}>
               ¿Primera vez? Conoce cómo funciona →
@@ -1026,8 +1049,28 @@ function AuthScreen({
             event.preventDefault();
             const data = new FormData(event.currentTarget);
             const formEmail = String(data.get("email") ?? email);
+            if (mode === "forgot") {
+              try {
+                await onReset({ email: formEmail });
+                setMode("reset-code");
+              } catch {
+                // error handled inside onReset
+              }
+              return;
+            }
+            if (mode === "reset-code") {
+              const codeVal = String(data.get("code") || "");
+              const formPassword = String(data.get("password") ?? password);
+              try {
+                await onVerifyReset({ email: formEmail, code: codeVal, newPassword: formPassword });
+                setMode("login");
+              } catch {
+                // error handled inside onVerifyReset
+              }
+              return;
+            }
+            const formPassword = mode === "signup" && passwordMode === "easy" ? easyPassword : String(data.get("password") ?? password);
             if (mode === "signup") {
-              const formPassword = passwordMode === "easy" ? easyPassword : String(data.get("password") ?? password);
               onSignup({
                 email: formEmail,
                 password: formPassword,
@@ -1036,23 +1079,10 @@ function AuthScreen({
                 avatar: String(data.get("avatar") ?? avatar),
                 favoriteTeam: String(data.get("favoriteTeam") ?? favoriteTeam) || undefined,
               });
-            } else if (mode === "login") {
-              onLogin({ email: formEmail, password: String(data.get("password") ?? password) });
-            } else if (mode === "forgot") {
-              try {
-                await onReset({ email: formEmail });
-                setMode("reset-code");
-              } catch {
-                // Keep in forgot mode
-              }
-            } else if (mode === "reset-code") {
-              const code = String(data.get("code") ?? resetCode);
-              const formPassword = String(data.get("password") ?? password);
-              onVerifyReset({ email: formEmail, code, newPassword: formPassword });
-            }
+            } else onLogin({ email: formEmail, password: formPassword });
           }}
         >
-          {league && (mode === "signup" || mode === "login") && (
+          {league && (
             <div className="glass" style={{
               padding: "16px",
               borderRadius: "16px",
@@ -1078,12 +1108,12 @@ function AuthScreen({
               </div>
             </div>
           )}
-          {mode !== "forgot" && mode !== "reset-code" ? (
+          {(mode === "signup" || mode === "login") && (
             <div className="segmented">
               <button type="button" className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Crear cuenta</button>
               <button type="button" className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Entrar</button>
             </div>
-          ) : null}
+          )}
           {mode === "signup" ? (
             <>
               <label><span>Nombre de guerra</span><input name="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Leo del grupo" required minLength={2} /></label>
@@ -1116,32 +1146,6 @@ function AuthScreen({
           ) : null}
           <label><span>Email</span><input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="tu@email.com" required /></label>
           
-          {mode === "reset-code" && (
-            <label>
-              <span>Código de recuperación</span>
-              <input
-                name="code"
-                type="text"
-                value={resetCode}
-                onChange={(event) => setResetCode(event.target.value)}
-                placeholder="123456"
-                required
-                minLength={6}
-                maxLength={6}
-                style={{
-                  fontFamily: "var(--mono)",
-                  letterSpacing: "4px",
-                  textAlign: "center",
-                  fontSize: "18px",
-                  fontWeight: "bold",
-                  color: "var(--lime)",
-                  background: "rgba(198, 255, 61, 0.03)",
-                  borderColor: "rgba(198, 255, 61, 0.25)"
-                }}
-              />
-            </label>
-          )}
-
           {mode !== "forgot" && (
             <label style={{ position: "relative" }}>
               {mode === "signup" ? (
@@ -1189,7 +1193,7 @@ function AuthScreen({
                   </div>
                 </div>
               ) : (
-                <span>{mode === "reset-code" ? "Nueva clave" : "Clave"}</span>
+                <span>Clave nueva</span>
               )}
 
               {mode === "signup" && passwordMode === "easy" ? (
@@ -1282,7 +1286,7 @@ function AuthScreen({
                       {showPassword ? "OCULTAR" : "VER"}
                     </button>
                   </div>
-                  {(mode === "signup" || mode === "reset-code") && (
+                  {mode === "signup" && (
                     <div className="strength-container" style={{ marginTop: "6px" }}>
                       <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", marginBottom: "4px" }}>
                         <span style={{ color: "var(--ink-2)" }}>Seguridad:</span>
@@ -1311,9 +1315,9 @@ function AuthScreen({
               )}
             </label>
           )}
-          
+
           {mode === "login" && (
-            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "2px" }}>
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "-6px", marginBottom: "8px" }}>
               <button
                 type="button"
                 onClick={() => setMode("forgot")}
@@ -1322,7 +1326,7 @@ function AuthScreen({
                   border: "none",
                   color: "var(--lime)",
                   fontFamily: "var(--mono)",
-                  fontSize: "11px",
+                  fontSize: "10px",
                   cursor: "pointer",
                   padding: 0,
                   textDecoration: "underline"
@@ -1331,6 +1335,20 @@ function AuthScreen({
                 ¿OLVIDASTE TU CONTRASEÑA?
               </button>
             </div>
+          )}
+
+          {mode === "reset-code" && (
+            <label>
+              <span>Código de 6 dígitos</span>
+              <input
+                name="code"
+                type="text"
+                placeholder="123456"
+                required
+                maxLength={6}
+                style={{ fontFamily: "var(--mono)", letterSpacing: "2px", textAlign: "center" }}
+              />
+            </label>
           )}
           
           {error ? <p className="form-error">{error}</p> : null}
@@ -1345,7 +1363,7 @@ function AuthScreen({
                     ? "Enviar código"
                     : "Restablecer contraseña"}
           </button>
-          
+
           {mode === "forgot" && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: "12px" }}>
               <button
@@ -1404,41 +1422,7 @@ function AuthScreen({
             </div>
           )}
 
-          {mode !== "forgot" && mode !== "reset-code" ? (
-            <>
-              <div style={{ textAlign: "center", margin: "4px 0", color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: "11px" }}>o</div>
-              <button
-                type="button"
-                className="google-btn glass"
-                onClick={onGoogleLogin}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: "10px",
-                  width: "100%",
-                  padding: "13px 14px",
-                  borderRadius: "14px",
-                  border: "1px solid var(--line)",
-                  background: "rgba(255,255,255,0.03)",
-                  color: "var(--ink-0)",
-                  fontFamily: "var(--sans)",
-                  fontSize: "14px",
-                  fontWeight: "bold",
-                  cursor: "pointer",
-                  transition: "background 0.2s, transform 0.1s"
-                }}
-              >
-                <svg width="18" height="18" viewBox="0 0 18 18">
-                  <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
-                  <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A9 9 0 0 0 9 18z" fill="#34A853"/>
-                  <path d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707 0-.59.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
-                  <path d="M9 3.58c1.32 0 2.5.454 3.436 1.353l2.58-2.58C13.46 1.002 11.427 0 9 0A9 9 0 0 0 .957 4.961l3.007 2.332C4.672 5.164 6.656 3.58 9 3.58z" fill="#EA4335"/>
-                </svg>
-                <span>{mode === "signup" ? "Registrarse con Google" : "Iniciar sesión con Google"}</span>
-              </button>
-            </>
-          ) : null}
+
         </form>
       </section>
     </main>
@@ -1461,6 +1445,7 @@ function LeagueScreen({
   onLeave,
   onInvite,
   currentUser,
+  sessionToken,
 }: {
   leagueId: Id<"leagues"> | null;
   leagues: LeagueSummary[];
@@ -1468,6 +1453,7 @@ function LeagueScreen({
   onLeave: (id: Id<"leagues">) => void;
   onInvite: () => void;
   currentUser: AuthUser;
+  sessionToken: string;
 }) {
   const members = useQuery(api.leagues.members, leagueId ? { leagueId } : "skip");
   const recent = useQuery(api.picks.recentInLeague, leagueId ? { leagueId } : "skip");
@@ -1507,6 +1493,7 @@ function LeagueScreen({
             leagueName={activeLeagueName}
             currentUser={currentUser}
             memberCount={members?.length ?? 0}
+            sessionToken={sessionToken}
           />
 
           <div className="league-side-panels">
@@ -1553,11 +1540,13 @@ function LeagueChat({
   leagueName,
   currentUser,
   memberCount,
+  sessionToken,
 }: {
   leagueId: Id<"leagues">;
   leagueName: string;
   currentUser: AuthUser;
   memberCount: number;
+  sessionToken: string;
 }) {
   const messages = useQuery(api.chat.list, { leagueId, limit: 100 }) as
     | {
@@ -1586,10 +1575,10 @@ function LeagueChat({
     setSending(true);
     setError(null);
     try {
-      await sendMutation({ leagueId, text });
+      await sendMutation({ sessionToken, leagueId, text });
       setDraft("");
     } catch (err) {
-      setError(cleanErrorMessage(err, "No se pudo enviar"));
+      setError(err instanceof Error ? err.message : "No se pudo enviar");
     } finally {
       setSending(false);
     }
@@ -2103,7 +2092,7 @@ export default function Home() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [savingPick, setSavingPick] = useState(false);
 
-  const { sessionToken, user, loading: authLoading, signup, login, logout, signIn } = useAuth();
+  const { sessionToken, user, loading: authLoading, signup, login, logout, sendResetCode, resetPasswordWithCode } = useAuth();
   const userId = user?._id ?? null;
   const myLeagues = useQuery(api.leagues.listForUser, userId ? { userId } : "skip") as LeagueSummary[] | undefined;
   const { activeLeagueId, setActive } = useActiveLeague(myLeagues);
@@ -2124,18 +2113,6 @@ export default function Home() {
   const updateProfile = useMutation(api.users.updateProfile);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const errorParam = params.get("error");
-    if (errorParam) {
-      setAuthError(errorParam);
-      // Clean up the error query param from URL to keep it clean
-      const newUrl = new URL(window.location.href);
-      newUrl.searchParams.delete("error");
-      window.history.replaceState({}, "", newUrl.toString());
-    }
-  }, []);
-
-  useEffect(() => {
     if (!userId) return;
     const seen = window.localStorage.getItem("parleyia:onboarded");
     if (!seen && myLeagues && myLeagues.length === 0) {
@@ -2150,20 +2127,20 @@ export default function Home() {
   }, [userId, myLeagues]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !sessionToken) return;
     const code = new URLSearchParams(window.location.search).get("join");
     if (!code) return;
     const key = `parleyia:joined:${code.toUpperCase()}`;
     if (window.localStorage.getItem(key)) return;
     window.localStorage.setItem(key, "yes");
-    joinLeague({ code })
+    joinLeague({ sessionToken, code })
       .then((result) => {
         setActive(result.leagueId);
         setToast("Te uniste desde el link");
         setScreen("liga");
       })
-      .catch((err) => setToast(cleanErrorMessage(err, "Link inválido")));
-  }, [joinLeague, setActive, userId]);
+      .catch((err) => setToast(err instanceof Error ? err.message : "Link inválido"));
+  }, [joinLeague, sessionToken, setActive, userId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -2208,12 +2185,15 @@ export default function Home() {
 
   const savePickFor = useCallback(
     async (fixture: Fixture, pick: LocalPick) => {
-      if (!activeLeagueId) {
-        setToast("Crea o únete a una liga primero");
-        setShowOnboarding(true);
+      if (!sessionToken || !activeLeagueId) {
+        if (!activeLeagueId) {
+          setToast("Crea o únete a una liga primero");
+          setShowOnboarding(true);
+        }
         throw new Error("Sin liga activa");
       }
       await savePickMutation({
+        sessionToken,
         leagueId: activeLeagueId,
         fixtureId: fixture.id,
         home: pick.home,
@@ -2221,7 +2201,7 @@ export default function Home() {
         bonus: pick.bonus,
       });
     },
-    [activeLeagueId, savePickMutation]
+    [activeLeagueId, savePickMutation, sessionToken]
   );
 
   const savePickFromModal = async (pick: LocalPick) => {
@@ -2232,7 +2212,7 @@ export default function Home() {
       setToast("Jugada guardada");
       setSelected(null);
     } catch (err) {
-      setToast(cleanErrorMessage(err, "Error guardando"));
+      setToast(err instanceof Error ? err.message : "Error guardando");
     } finally {
       setSavingPick(false);
     }
@@ -2245,32 +2225,34 @@ export default function Home() {
   };
 
   const handleCreate = async (name: string) => {
+    if (!sessionToken) return;
     setOnboardingError(null);
     setOnboardingBusy(true);
     try {
-      const result = await createLeague({ name });
+      const result = await createLeague({ sessionToken, name });
       setActive(result.leagueId);
       setToast(`Liga creada · código ${result.code}`);
       closeOnboarding();
       setScreen("liga");
     } catch (err) {
-      setOnboardingError(cleanErrorMessage(err, "Error creando liga"));
+      setOnboardingError(err instanceof Error ? err.message : "Error creando liga");
     } finally {
       setOnboardingBusy(false);
     }
   };
 
   const handleJoin = async (code: string) => {
+    if (!sessionToken) return;
     setOnboardingError(null);
     setOnboardingBusy(true);
     try {
-      const result = await joinLeague({ code });
+      const result = await joinLeague({ sessionToken, code });
       setActive(result.leagueId);
       setToast(`Te uniste a la liga`);
       closeOnboarding();
       setScreen("liga");
     } catch (err) {
-      setOnboardingError(cleanErrorMessage(err, "Código inválido"));
+      setOnboardingError(err instanceof Error ? err.message : "Código inválido");
     } finally {
       setOnboardingBusy(false);
     }
@@ -2302,16 +2284,18 @@ export default function Home() {
 
 
   const handleUpdateProfile = async (profile: { name: string; handle: string; avatar: string; favoriteTeam?: string }) => {
-    await updateProfile(profile);
+    if (!sessionToken) return;
+    await updateProfile({ sessionToken, ...profile });
     setToast("Perfil actualizado");
   };
 
   const handleLeave = async (leagueId: Id<"leagues">) => {
+    if (!sessionToken) return;
     try {
-      await leaveLeague({ leagueId });
+      await leaveLeague({ sessionToken, leagueId });
       setToast("Saliste de la liga");
     } catch (err) {
-      setToast(cleanErrorMessage(err, "No se pudo salir"));
+      setToast(err instanceof Error ? err.message : "No se pudo salir");
     }
   };
 
@@ -2357,7 +2341,7 @@ export default function Home() {
         window.localStorage.setItem("parleyia:onboarded", "yes");
       }
     } catch (err) {
-      setAuthError(cleanErrorMessage(err, "No se pudo crear la cuenta"));
+      setAuthError(err instanceof Error ? err.message : "No se pudo crear la cuenta");
     } finally {
       setAuthBusy(false);
     }
@@ -2369,7 +2353,7 @@ export default function Home() {
     try {
       await login(args);
     } catch (err) {
-      setAuthError(cleanErrorMessage(err, "No se pudo entrar"));
+      setAuthError(err instanceof Error ? err.message : "No se pudo entrar");
     } finally {
       setAuthBusy(false);
     }
@@ -2379,9 +2363,10 @@ export default function Home() {
     setAuthBusy(true);
     setAuthError(null);
     try {
-      await signIn("password", { ...args, flow: "reset" });
+      await sendResetCode(args);
+      setToast("Código enviado. Búscalo en la consola de tu terminal.");
     } catch (err) {
-      setAuthError(cleanErrorMessage(err, "No se pudo enviar el código de recuperación"));
+      setAuthError(err instanceof Error ? err.message : "Error al enviar código");
       throw err;
     } finally {
       setAuthBusy(false);
@@ -2392,9 +2377,10 @@ export default function Home() {
     setAuthBusy(true);
     setAuthError(null);
     try {
-      await signIn("password", { ...args, flow: "reset-verification" });
+      await resetPasswordWithCode(args);
+      setToast("Contraseña restablecida correctamente");
     } catch (err) {
-      setAuthError(cleanErrorMessage(err, "Código inválido o error al restablecer"));
+      setAuthError(err instanceof Error ? err.message : "Error al restablecer contraseña");
       throw err;
     } finally {
       setAuthBusy(false);
@@ -2405,17 +2391,6 @@ export default function Home() {
     return <main className="auth-shell"><EmptyState message="Cargando tu Mundial…" /></main>;
   }
 
-  const handleGoogleLogin = () => {
-    setAuthBusy(true);
-    setAuthError(null);
-    const code = new URLSearchParams(window.location.search).get("join") || "";
-    signIn("google", { redirectTo: `/?join=${code}` })
-      .catch((err) => {
-        setAuthError(cleanErrorMessage(err, "Error al iniciar sesión con Google"));
-        setAuthBusy(false);
-      });
-  };
-
   if (!user) {
     return (
       <AuthScreen
@@ -2423,7 +2398,6 @@ export default function Home() {
         onLogin={handleLogin}
         onReset={handleReset}
         onVerifyReset={handleVerifyReset}
-        onGoogleLogin={handleGoogleLogin}
         busy={authBusy}
         error={authError}
       />
@@ -2456,7 +2430,7 @@ export default function Home() {
           <MatchesScreen picks={picks} savePickFor={savePickFor} openPick={openPick} />
         )}
         {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} />}
-        {screen === "liga" && (
+        {screen === "liga" && sessionToken && (
           <LeagueScreen
             leagueId={activeLeagueId}
             leagues={leagues}
@@ -2464,6 +2438,7 @@ export default function Home() {
             onLeave={handleLeave}
             onInvite={handleInvite}
             currentUser={user}
+            sessionToken={sessionToken}
           />
         )}
         {screen === "perfil" && (

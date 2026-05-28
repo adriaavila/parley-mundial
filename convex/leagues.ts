@@ -16,10 +16,11 @@ function generateCode() {
 
 export const create = mutation({
   args: {
+    sessionToken: v.string(),
     name: v.string(),
   },
-  handler: async (ctx, { name }) => {
-    const user = await requireUser(ctx);
+  handler: async (ctx, { sessionToken, name }) => {
+    const user = await requireUser(ctx, sessionToken);
     const userId = user._id;
     const trimmed = name.trim();
     if (trimmed.length < 2) throw new Error("Nombre de liga muy corto");
@@ -55,10 +56,11 @@ export const create = mutation({
 
 export const joinByCode = mutation({
   args: {
+    sessionToken: v.string(),
     code: v.string(),
   },
-  handler: async (ctx, { code }) => {
-    const user = await requireUser(ctx);
+  handler: async (ctx, { sessionToken, code }) => {
+    const user = await requireUser(ctx, sessionToken);
     const userId = user._id;
     const normalized = code.trim().toUpperCase();
     const league = await ctx.db
@@ -158,10 +160,11 @@ export const listForUser = query({
 
 export const leave = mutation({
   args: {
+    sessionToken: v.string(),
     leagueId: v.id("leagues"),
   },
-  handler: async (ctx, { leagueId }) => {
-    const user = await requireUser(ctx);
+  handler: async (ctx, { sessionToken, leagueId }) => {
+    const user = await requireUser(ctx, sessionToken);
     const userId = user._id;
     const league = await ctx.db.get(leagueId);
     if (!league) throw new Error("Liga no encontrada");

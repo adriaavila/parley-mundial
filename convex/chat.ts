@@ -17,11 +17,12 @@ async function assertMember(ctx: QueryCtx, leagueId: Id<"leagues">, userId: Id<"
 
 export const send = mutation({
   args: {
+    sessionToken: v.string(),
     leagueId: v.id("leagues"),
     text: v.string(),
   },
-  handler: async (ctx, { leagueId, text }) => {
-    const user = await requireUser(ctx);
+  handler: async (ctx, { sessionToken, leagueId, text }) => {
+    const user = await requireUser(ctx, sessionToken);
     const trimmed = text.trim();
     if (trimmed.length === 0) throw new Error("Mensaje vacío");
     if (trimmed.length > MAX_LEN) throw new Error("Mensaje muy largo");

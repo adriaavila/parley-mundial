@@ -8,9 +8,7 @@
  * @module
  */
 
-import type * as auth from "../auth.js";
 import type * as chat from "../chat.js";
-import type * as http from "../http.js";
 import type * as leagues from "../leagues.js";
 import type * as picks from "../picks.js";
 import type * as scoring from "../scoring.js";
@@ -24,9 +22,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
-  auth: typeof auth;
   chat: typeof chat;
-  http: typeof http;
   leagues: typeof leagues;
   picks: typeof picks;
   scoring: typeof scoring;
