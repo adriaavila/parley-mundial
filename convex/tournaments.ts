@@ -1,7 +1,20 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { MATCH_RESULTS, scorePick } from "./scoring";
+import { MATCH_RESULTS, fixtureStart, scorePick } from "./scoring";
+
+function computeStreak(picks: { fixtureId: string; home: number; away: number }[]) {
+  const finished = picks
+    .filter((pick) => MATCH_RESULTS[pick.fixtureId])
+    .sort((a, b) => fixtureStart(b.fixtureId) - fixtureStart(a.fixtureId));
+  let streak = 0;
+  for (const pick of finished) {
+    const scored = scorePick(pick, MATCH_RESULTS[pick.fixtureId]);
+    if (scored.correctResult || scored.exact) streak += 1;
+    else break;
+  }
+  return streak;
+}
 
 const ACTIVE_SLUG = "mundial-2026";
 const ACTIVE_NAME = "Mundial 2026";
@@ -70,17 +83,24 @@ export const globalLeaderboard = query({
 
     const byUser = new Map<
       string,
-      { points: number; picks: number; exacts: number; correctResults: number }
+      {
+        points: number;
+        picks: number;
+        exacts: number;
+        correctResults: number;
+        userPicks: { fixtureId: string; home: number; away: number }[];
+      }
     >();
     for (const pick of dedup.values()) {
       const scored = scorePick(pick, MATCH_RESULTS[pick.fixtureId]);
       const key = String(pick.userId);
       const entry =
-        byUser.get(key) ?? { points: 0, picks: 0, exacts: 0, correctResults: 0 };
+        byUser.get(key) ?? { points: 0, picks: 0, exacts: 0, correctResults: 0, userPicks: [] };
       entry.points += scored.points;
       entry.picks += 1;
       if (scored.exact) entry.exacts += 1;
       if (scored.correctResult) entry.correctResults += 1;
+      entry.userPicks.push({ fixtureId: pick.fixtureId, home: pick.home, away: pick.away });
       byUser.set(key, entry);
     }
 
@@ -93,6 +113,7 @@ export const globalLeaderboard = query({
       picks: number;
       exacts: number;
       correctResults: number;
+      streak: number;
       points: number;
     }[] = [];
 
@@ -100,13 +121,15 @@ export const globalLeaderboard = query({
       const userId = userIdStr as Id<"users">;
       const user = await ctx.db.get(userId);
       if (!user) continue;
+      const { userPicks, ...rest } = agg;
       rows.push({
         userId,
         name: user.name,
         handle: user.handle,
         avatar: user.avatar,
         favoriteTeam: user.favoriteTeam,
-        ...agg,
+        streak: computeStreak(userPicks),
+        ...rest,
       });
     }
 

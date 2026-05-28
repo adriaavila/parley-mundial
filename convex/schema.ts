@@ -64,4 +64,13 @@ export default defineSchema({
     .index("by_user_fixture", ["userId", "fixtureId"])
     .index("by_league_fixture", ["leagueId", "fixtureId"])
     .index("by_league_user", ["leagueId", "userId"]),
+
+  chatMessages: defineTable({
+    leagueId: v.id("leagues"),
+    userId: v.id("users"),
+    text: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_league", ["leagueId"])
+    .index("by_league_created", ["leagueId", "createdAt"]),
 });

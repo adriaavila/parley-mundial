@@ -60,6 +60,12 @@ async function userBySession(ctx: QueryCtx, sessionToken: string) {
   return await ctx.db.get(session.userId);
 }
 
+export async function requireUser(ctx: QueryCtx, sessionToken: string) {
+  const user = await userBySession(ctx, sessionToken);
+  if (!user) throw new Error("Sesión inválida");
+  return user;
+}
+
 export const signup = mutation({
   args: {
     email: v.string(),
@@ -133,6 +139,63 @@ export const login = mutation({
   },
 });
 
+export const loginOrSignupWithGoogle = mutation({
+  args: {
+    email: v.string(),
+    name: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email);
+    const name = args.name.trim();
+    if (!email) throw new Error("Email requerido");
+
+    let user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+
+    if (!user) {
+      // Create new user
+      const baseHandle = normalizeHandle(makeHandle(name));
+      let handle = baseHandle;
+      let counter = 1;
+      while (true) {
+        const dup = await ctx.db
+          .query("users")
+          .withIndex("by_handle", (q) => q.eq("handle", handle))
+          .unique();
+        if (!dup) break;
+        handle = `${baseHandle}${counter}`;
+        counter++;
+      }
+
+      const now = Date.now();
+      const userId = await ctx.db.insert("users", {
+        email,
+        name,
+        handle,
+        avatar: randomAvatar(name),
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      user = await ctx.db.get(userId);
+    }
+
+    if (!user) throw new Error("Error al iniciar sesión con Google");
+
+    return {
+      userId: user._id,
+      sessionToken: await createSession(ctx, user._id),
+      name: user.name,
+      handle: user.handle,
+      avatar: user.avatar,
+      favoriteTeam: user.favoriteTeam,
+    };
+  },
+});
+
+
 export const me = query({
   args: { sessionToken: v.string() },
   handler: async (ctx, { sessionToken }) => {
@@ -151,23 +214,33 @@ export const me = query({
 
 export const updateProfile = mutation({
   args: {
-    userId: v.id("users"),
+    sessionToken: v.string(),
     name: v.string(),
     handle: v.string(),
     avatar: v.string(),
     favoriteTeam: v.optional(v.string()),
   },
-  handler: async (ctx, { userId, name, handle, avatar, favoriteTeam }) => {
+  handler: async (ctx, { sessionToken, name, handle, avatar, favoriteTeam }) => {
+    const user = await requireUser(ctx, sessionToken);
     const trimmedName = name.trim();
     if (trimmedName.length < 2) throw new Error("El nombre es muy corto");
-    await ctx.db.patch(userId, {
+    await ctx.db.patch(user._id, {
       name: trimmedName,
       handle: normalizeHandle(handle),
       avatar: avatar.trim() || randomAvatar(trimmedName),
       favoriteTeam,
       updatedAt: Date.now(),
     });
-    return await ctx.db.get(userId);
+    const updated = await ctx.db.get(user._id);
+    if (!updated) return null;
+    return {
+      _id: updated._id,
+      email: updated.email,
+      name: updated.name,
+      handle: updated.handle,
+      avatar: updated.avatar,
+      favoriteTeam: updated.favoriteTeam,
+    };
   },
 });
 
@@ -184,44 +257,18 @@ export const logout = mutation({
   },
 });
 
-export const upsertByAnonId = mutation({
-  args: {
-    anonId: v.string(),
-    name: v.string(),
-  },
-  handler: async (ctx, { anonId, name }) => {
-    const trimmed = name.trim() || "Mundialero";
-    const existing = await ctx.db
-      .query("users")
-      .withIndex("by_anonId", (q) => q.eq("anonId", anonId))
-      .unique();
-
-    if (existing) {
-      if (existing.name !== trimmed) {
-        await ctx.db.patch(existing._id, {
-          name: trimmed,
-          handle: makeHandle(trimmed),
-          avatar: randomAvatar(trimmed),
-          updatedAt: Date.now(),
-        });
-      }
-      return existing._id;
-    }
-
-    return await ctx.db.insert("users", {
-      anonId,
-      name: trimmed,
-      handle: makeHandle(trimmed),
-      avatar: randomAvatar(trimmed),
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-  },
-});
-
 export const get = query({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
-    return await ctx.db.get(userId);
+    const user = await ctx.db.get(userId);
+    if (!user) return null;
+    // Strip secrets — never return passwordHash/salt to clients.
+    return {
+      _id: user._id,
+      name: user.name,
+      handle: user.handle,
+      avatar: user.avatar,
+      favoriteTeam: user.favoriteTeam,
+    };
   },
 });

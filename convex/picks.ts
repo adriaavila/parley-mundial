@@ -3,16 +3,34 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { MATCH_RESULTS, VALID_FIXTURE, fixtureStart, scorePick } from "./scoring";
 
+// Streak = consecutive most-recent finished matches where the user got the
+// result right (or better). Counts back from the latest finished pick.
+function computeStreak(picks: { fixtureId: string; home: number; away: number }[]) {
+  const finished = picks
+    .filter((pick) => MATCH_RESULTS[pick.fixtureId])
+    .sort((a, b) => fixtureStart(b.fixtureId) - fixtureStart(a.fixtureId));
+  let streak = 0;
+  for (const pick of finished) {
+    const scored = scorePick(pick, MATCH_RESULTS[pick.fixtureId]);
+    if (scored.correctResult || scored.exact) streak += 1;
+    else break;
+  }
+  return streak;
+}
+import { requireUser } from "./users";
+
 export const save = mutation({
   args: {
+    sessionToken: v.string(),
     leagueId: v.id("leagues"),
-    userId: v.id("users"),
     fixtureId: v.string(),
     home: v.number(),
     away: v.number(),
     bonus: v.array(v.string()),
   },
-  handler: async (ctx, { leagueId, userId, fixtureId, home, away, bonus }) => {
+  handler: async (ctx, { sessionToken, leagueId, fixtureId, home, away, bonus }) => {
+    const user = await requireUser(ctx, sessionToken);
+    const userId = user._id;
     if (!VALID_FIXTURE.test(fixtureId)) throw new Error("Partido inválido");
     if (home < 0 || home > 20 || away < 0 || away > 20) throw new Error("Marcador inválido");
     if (bonus.length > 5) throw new Error("Demasiados bonus");
@@ -113,6 +131,7 @@ export const leagueLeaderboard = query({
       picks: number;
       exacts: number;
       correctResults: number;
+      streak: number;
       points: number;
     }[] = [];
     for (const m of memberships) {
@@ -135,6 +154,7 @@ export const leagueLeaderboard = query({
         picks: picks.length,
         exacts: scored.filter((item) => item.exact).length,
         correctResults: scored.filter((item) => item.correctResult).length,
+        streak: computeStreak(picks),
         points,
       });
     }

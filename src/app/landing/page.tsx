@@ -19,6 +19,12 @@ export const metadata: Metadata = {
     url: "/landing",
     type: "website",
   },
+  twitter: {
+    card: "summary_large_image",
+    title: "ParlAI Mundial 2026 — Domina el Pronóstico",
+    description:
+      "Crea ligas privadas, predice cada partido del Mundial y compite con tus amigos. Gratis.",
+  },
 };
 
 export default function LandingIndex() {
@@ -29,11 +35,12 @@ export default function LandingIndex() {
       {/* HERO */}
       <section className="relative pt-20 pb-32 overflow-hidden">
         <div
-          className="absolute inset-0 opacity-25 pointer-events-none"
+          className="absolute inset-0 pointer-events-none"
           style={{
-            backgroundImage: `linear-gradient(to bottom, transparent 0%, var(--background) 90%), url(${HERO})`,
+            backgroundImage: `linear-gradient(to bottom, transparent 65%, var(--bg-0) 100%), url(${HERO})`,
             backgroundSize: "cover",
             backgroundPosition: "center",
+            opacity: 1.0,
           }}
         />
         <div className="absolute inset-x-0 top-1/2 opacity-10 pointer-events-none select-none overflow-hidden">

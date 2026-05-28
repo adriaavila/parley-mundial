@@ -1,6 +1,8 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
+import { MATCH_RESULTS, scorePick } from "./scoring";
+import { requireUser } from "./users";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 
@@ -14,10 +16,12 @@ function generateCode() {
 
 export const create = mutation({
   args: {
-    userId: v.id("users"),
+    sessionToken: v.string(),
     name: v.string(),
   },
-  handler: async (ctx, { userId, name }) => {
+  handler: async (ctx, { sessionToken, name }) => {
+    const user = await requireUser(ctx, sessionToken);
+    const userId = user._id;
     const trimmed = name.trim();
     if (trimmed.length < 2) throw new Error("Nombre de liga muy corto");
     if (trimmed.length > 40) throw new Error("Nombre de liga muy largo");
@@ -52,10 +56,12 @@ export const create = mutation({
 
 export const joinByCode = mutation({
   args: {
-    userId: v.id("users"),
+    sessionToken: v.string(),
     code: v.string(),
   },
-  handler: async (ctx, { userId, code }) => {
+  handler: async (ctx, { sessionToken, code }) => {
+    const user = await requireUser(ctx, sessionToken);
+    const userId = user._id;
     const normalized = code.trim().toUpperCase();
     const league = await ctx.db
       .query("leagues")
@@ -133,7 +139,11 @@ export const listForUser = query({
           .query("picks")
           .withIndex("by_league_user", (q) => q.eq("leagueId", league._id).eq("userId", member.userId))
           .collect();
-        rows.push({ userId: member.userId, name: user.name, points: 0, picks: picks.length });
+        const points = picks.reduce(
+          (sum, pick) => sum + scorePick(pick, MATCH_RESULTS[pick.fixtureId]).points,
+          0,
+        );
+        rows.push({ userId: member.userId, name: user.name, points, picks: picks.length });
       }
       rows.sort((a, b) => b.points - a.points || b.picks - a.picks || a.name.localeCompare(b.name));
       leagues.push({
@@ -150,10 +160,12 @@ export const listForUser = query({
 
 export const leave = mutation({
   args: {
+    sessionToken: v.string(),
     leagueId: v.id("leagues"),
-    userId: v.id("users"),
   },
-  handler: async (ctx, { leagueId, userId }) => {
+  handler: async (ctx, { sessionToken, leagueId }) => {
+    const user = await requireUser(ctx, sessionToken);
+    const userId = user._id;
     const league = await ctx.db.get(leagueId);
     if (!league) throw new Error("Liga no encontrada");
     if (league.ownerId === userId) throw new Error("El dueño no puede abandonar su liga");
@@ -200,3 +212,30 @@ export const members = query({
     return result;
   },
 });
+
+export const getByCode = query({
+  args: { code: v.string() },
+  handler: async (ctx, { code }) => {
+    const normalized = code.trim().toUpperCase();
+    const league = await ctx.db
+      .query("leagues")
+      .withIndex("by_code", (q) => q.eq("code", normalized))
+      .unique();
+    if (!league) return null;
+
+    const owner = await ctx.db.get(league.ownerId);
+    const leagueMembers = await ctx.db
+      .query("memberships")
+      .withIndex("by_league", (q) => q.eq("leagueId", league._id))
+      .collect();
+
+    return {
+      _id: league._id,
+      name: league.name,
+      code: league.code,
+      ownerName: owner?.name ?? "Invitado",
+      memberCount: leagueMembers.length,
+    };
+  },
+});
+

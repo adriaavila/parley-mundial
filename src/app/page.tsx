@@ -253,7 +253,17 @@ function useAuth() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setSessionToken(window.localStorage.getItem("parleyia:session"));
+      const urlParams = new URLSearchParams(window.location.search);
+      const token = urlParams.get("token");
+      const join = urlParams.get("join");
+      if (token) {
+        window.localStorage.setItem("parleyia:session", token);
+        const cleanUrl = join ? `/?join=${join}` : "/";
+        window.history.replaceState({}, document.title, cleanUrl);
+        setSessionToken(token);
+      } else {
+        setSessionToken(window.localStorage.getItem("parleyia:session"));
+      }
     }, 0);
     return () => window.clearTimeout(timer);
   }, []);
@@ -584,19 +594,23 @@ function InlinePickRow({
   );
   const [state, setState] = useState<SaveState>("idle");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const lastSavedRef = useRef<string | null>(pick ? `${pick.home}-${pick.away}` : null);
+  const [lastSavedKey, setLastSavedKey] = useState<string | null>(
+    pick ? `${pick.home}-${pick.away}` : null
+  );
   const pendingRef = useRef<{ home: number; away: number } | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    if (pick) {
-      const key = `${pick.home}-${pick.away}`;
-      if (lastSavedRef.current !== key) {
-        lastSavedRef.current = key;
-        setDraft({ home: pick.home, away: pick.away });
-      }
-    }
+    if (!pick) return;
+    const key = `${pick.home}-${pick.away}`;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLastSavedKey((prev) => {
+      if (prev === key) return prev;
+      // Server pushed a newer value — sync local draft.
+      setDraft({ home: pick.home, away: pick.away });
+      return key;
+    });
   }, [pick]);
 
   useEffect(() => {
@@ -614,7 +628,7 @@ function InlinePickRow({
     setErrorMsg(null);
     try {
       await savePickFor(fixture, { home: next.home, away: next.away, bonus: pick?.bonus ?? [] });
-      lastSavedRef.current = `${next.home}-${next.away}`;
+      setLastSavedKey(`${next.home}-${next.away}`);
       setState("saved");
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
       savedTimerRef.current = setTimeout(() => setState("idle"), 1400);
@@ -622,7 +636,7 @@ function InlinePickRow({
       setState("error");
       setErrorMsg(err instanceof Error ? err.message : "Error");
     }
-  }, [fixture, pick?.bonus, savePickFor]);
+  }, [fixture, pick, savePickFor]);
 
   const queue = useCallback(
     (homeScore: number, awayScore: number) => {
@@ -635,7 +649,7 @@ function InlinePickRow({
     [flush, locked]
   );
 
-  const dirty = draft !== null && lastSavedRef.current !== `${draft.home}-${draft.away}`;
+  const dirty = draft !== null && lastSavedKey !== `${draft.home}-${draft.away}`;
 
   const quickPick = (h: number, a: number) => queue(h, a);
   const bump = (side: "home" | "away", delta: number) => {
@@ -741,6 +755,7 @@ type LeaderboardRow = {
   picks: number;
   exacts: number;
   correctResults: number;
+  streak: number;
   points: number;
 };
 
@@ -848,9 +863,8 @@ function LeaderboardScreen({ leagueId, currentUserId }: { leagueId: Id<"leagues"
               <p>
                 <b>vos · {meRanked.points} pts</b>
                 <small>
-                  {scope === "global"
-                    ? `${meRanked.exacts} exactos · ${meRanked.correctResults} resultados`
-                    : "↑ subiste 2 puestos esta semana"}
+                  {meRanked.exacts} exactos · {meRanked.correctResults} resultados
+                  {meRanked.streak > 0 ? ` · racha ${meRanked.streak}` : ""}
                 </small>
               </p>
               <em>
@@ -895,10 +909,12 @@ function LeaderboardCard({
       <span className="leader-avatar">{row.avatar}</span>
       <span className="leader-copy">
         <strong>{isMe ? "Tú" : row.name} {isMe ? <em>vos</em> : null}</strong>
-        <small>{row.exacts} exactos · GD +{Math.max(1, row.correctResults + row.exacts)} · <mark>racha {Math.max(1, row.exacts || row.correctResults)}</mark></small>
+        <small>
+          {row.exacts} exactos · {row.correctResults} resultados · {row.picks} jugadas
+          {row.streak > 0 ? <> · <mark>racha {row.streak}</mark></> : null}
+        </small>
         {isLeader ? <i>🔥</i> : null}
       </span>
-      <span className="leader-move">{rank === 2 ? "▲ 2" : rank === 3 ? "▼ 1" : "−"}</span>
       <strong className="leader-points">{row.points}<small>PTS</small></strong>
     </article>
   );
@@ -916,6 +932,15 @@ const AVATAR_EMOJIS = [
   "⚽","🏆","🥇","🔥","⚡","🎯","💥","👑","🦁","🐯","🐺","🦊","🐉","🦅","🐂","🦈",
   "🚀","🌟","💎","🎲","🎮","🎧","🥶","😎","🤘","🫡","🧉","🍻","🌮","🥁","🪩","🛡️",
 ] as const;
+
+function generateMemorablePassword() {
+  const prefixes = ["copa", "mundial", "futbol", "golazo", "pasion", "furia", "albiceleste", "seleccion", "tiro", "arco", "arbitro", "gambeta", "tablon", "campeon"];
+  const adjectives = ["seguro", "rapido", "fuerte", "activo", "crack", "astro", "libre", "limpio", "super", "lider", "diez", "nueve"];
+  const randomPrefix = prefixes[Math.floor(Math.random() * prefixes.length)];
+  const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
+  return `${randomPrefix}-${randomAdj}-${randomNum}`;
+}
 
 function AuthScreen({
   onSignup,
@@ -935,6 +960,46 @@ function AuthScreen({
   const [password, setPassword] = useState("");
   const [avatar, setAvatar] = useState("⚽");
   const [favoriteTeam, setFavoriteTeam] = useState("arg");
+  const [showPassword, setShowPassword] = useState(false);
+  const [inviteCode, setInviteCode] = useState("");
+
+  // Easy Sign Up / Custom Password States
+  const [passwordMode, setPasswordMode] = useState<"easy" | "custom">("easy");
+  const [easyPassword, setEasyPassword] = useState(() => generateMemorablePassword());
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("join");
+    if (code) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInviteCode(code.toUpperCase());
+    }
+  }, []);
+
+  const league = useQuery(api.leagues.getByCode, { code: inviteCode });
+
+  // Password strength estimation helper
+  const getPasswordStrength = (pass: string) => {
+    if (!pass) return { score: 0, label: "Vacía", color: "#666" };
+    let score = 0;
+    if (pass.length >= 8) score += 1;
+    if (/[a-z]/.test(pass) && /[A-Z]/.test(pass)) score += 1;
+    if (/\d/.test(pass)) score += 1;
+    if (/[^A-Za-z0-9]/.test(pass)) score += 1;
+
+    let label = "Débil";
+    let color = "#ef4444";
+    if (score === 2 || score === 3) {
+      label = "Media";
+      color = "#f59e0b";
+    } else if (score === 4) {
+      label = "Fuerte";
+      color = "var(--lime)";
+    }
+    return { score, label, color };
+  };
+
+  const strength = getPasswordStrength(password);
 
   return (
     <main className="auth-shell">
@@ -955,7 +1020,7 @@ function AuthScreen({
             event.preventDefault();
             const data = new FormData(event.currentTarget);
             const formEmail = String(data.get("email") ?? email);
-            const formPassword = String(data.get("password") ?? password);
+            const formPassword = mode === "signup" && passwordMode === "easy" ? easyPassword : String(data.get("password") ?? password);
             if (mode === "signup") {
               onSignup({
                 email: formEmail,
@@ -968,6 +1033,32 @@ function AuthScreen({
             } else onLogin({ email: formEmail, password: formPassword });
           }}
         >
+          {league && (
+            <div className="glass" style={{
+              padding: "16px",
+              borderRadius: "16px",
+              border: "1px solid rgba(198, 255, 61, 0.4)",
+              background: "rgba(198, 255, 61, 0.05)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "6px",
+              marginBottom: "4px"
+            }}>
+              <span style={{ fontSize: "11px", color: "var(--lime)", letterSpacing: "0.1em" }}>⚡ INVITACIÓN ACTIVA</span>
+              <div style={{ fontSize: "20px", fontWeight: "bold", color: "#fff" }}>{league.name}</div>
+              <div style={{ fontSize: "13px", color: "var(--ink-2)" }}>
+                Creada por <strong style={{ color: "var(--ink-1)" }}>{league.ownerName}</strong> · {league.memberCount} {league.memberCount === 1 ? "participante" : "participantes"}
+              </div>
+              <div style={{
+                marginTop: "4px",
+                fontSize: "11px",
+                fontFamily: "var(--mono)",
+                color: "var(--lime)"
+              }}>
+                Código pre-cargado: <strong style={{ letterSpacing: "1px" }}>{league.code}</strong>
+              </div>
+            </div>
+          )}
           <div className="segmented">
             <button type="button" className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Crear cuenta</button>
             <button type="button" className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Entrar</button>
@@ -1003,9 +1094,210 @@ function AuthScreen({
             </>
           ) : null}
           <label><span>Email</span><input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="tu@email.com" required /></label>
-          <label><span>Clave</span><input name="password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required /></label>
+          
+          <label style={{ position: "relative" }}>
+            {mode === "signup" ? (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                <span style={{ margin: 0 }}>Clave</span>
+                <div className="password-mode-selector" style={{ display: "flex", gap: "4px" }}>
+                  <button
+                    type="button"
+                    onClick={() => setPasswordMode("easy")}
+                    className={passwordMode === "easy" ? "active" : ""}
+                    style={{
+                      background: passwordMode === "easy" ? "var(--lime)" : "rgba(255,255,255,0.03)",
+                      color: passwordMode === "easy" ? "#070808" : "var(--ink-2)",
+                      border: "1px solid var(--line)",
+                      borderRadius: "6px",
+                      padding: "2px 8px",
+                      fontSize: "10px",
+                      fontFamily: "var(--mono)",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                      transition: "all 0.2s"
+                    }}
+                  >
+                    Fácil ⚡
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPasswordMode("custom")}
+                    className={passwordMode === "custom" ? "active" : ""}
+                    style={{
+                      background: passwordMode === "custom" ? "var(--lime)" : "rgba(255,255,255,0.03)",
+                      color: passwordMode === "custom" ? "#070808" : "var(--ink-2)",
+                      border: "1px solid var(--line)",
+                      borderRadius: "6px",
+                      padding: "2px 8px",
+                      fontSize: "10px",
+                      fontFamily: "var(--mono)",
+                      cursor: "pointer",
+                      fontWeight: "bold",
+                      transition: "all 0.2s"
+                    }}
+                  >
+                    Manual 🔐
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <span>Clave</span>
+            )}
+
+            {mode === "signup" && passwordMode === "easy" ? (
+              <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <input
+                    type="text"
+                    value={easyPassword}
+                    readOnly
+                    style={{
+                      width: "100%",
+                      paddingRight: "70px",
+                      fontFamily: "var(--mono)",
+                      color: "var(--lime)",
+                      background: "rgba(198, 255, 61, 0.03)",
+                      borderColor: "rgba(198, 255, 61, 0.25)"
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(easyPassword);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 2000);
+                    }}
+                    style={{
+                      position: "absolute",
+                      right: "12px",
+                      background: "none",
+                      border: "none",
+                      color: copied ? "var(--lime)" : "var(--ink-2)",
+                      fontFamily: "var(--mono)",
+                      fontSize: "11px",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      padding: "4px 8px"
+                    }}
+                  >
+                    {copied ? "COPIADA" : "COPIAR"}
+                  </button>
+                </div>
+                <span style={{ display: "block", fontSize: "10px", color: "var(--ink-2)", textTransform: "none", fontFamily: "var(--sans)", marginTop: "2px" }}>
+                  🔒 Clave segura auto-generada. Cópiala para otros dispositivos.{" "}
+                  <button
+                    type="button"
+                    onClick={() => setEasyPassword(generateMemorablePassword())}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--lime)",
+                      textDecoration: "underline",
+                      cursor: "pointer",
+                      padding: 0,
+                      font: "inherit",
+                      fontSize: "10px"
+                    }}
+                  >
+                    Generar otra
+                  </button>
+                </span>
+              </div>
+            ) : (
+              <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                  <input
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    value={password}
+                    onChange={(event) => setPassword(event.target.value)}
+                    minLength={8}
+                    required
+                    style={{ width: "100%", paddingRight: "70px" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    style={{
+                      position: "absolute",
+                      right: "12px",
+                      background: "none",
+                      border: "none",
+                      color: "var(--lime)",
+                      fontFamily: "var(--mono)",
+                      fontSize: "11px",
+                      fontWeight: "bold",
+                      cursor: "pointer",
+                      padding: "4px 8px"
+                    }}
+                  >
+                    {showPassword ? "OCULTAR" : "VER"}
+                  </button>
+                </div>
+                {mode === "signup" && (
+                  <div className="strength-container" style={{ marginTop: "6px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", marginBottom: "4px" }}>
+                      <span style={{ color: "var(--ink-2)" }}>Seguridad:</span>
+                      <span style={{ color: strength.color, fontWeight: "bold" }}>{strength.label}</span>
+                    </div>
+                    <div style={{ height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden", marginBottom: "6px" }}>
+                      <div style={{ height: "100%", width: `${(strength.score / 4) * 100}%`, background: strength.color, transition: "width 0.3s ease" }} />
+                    </div>
+                    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px", fontSize: "9px" }}>
+                      <li style={{ display: "flex", alignItems: "center", gap: "4px", color: password.length >= 8 ? "var(--lime)" : "var(--ink-2)" }}>
+                        <span>{password.length >= 8 ? "✓" : "○"}</span> 8+ caracteres
+                      </li>
+                      <li style={{ display: "flex", alignItems: "center", gap: "4px", color: (/[a-z]/.test(password) && /[A-Z]/.test(password)) ? "var(--lime)" : "var(--ink-2)" }}>
+                        <span>{(/[a-z]/.test(password) && /[A-Z]/.test(password)) ? "✓" : "○"}</span> Mayús y minús
+                      </li>
+                      <li style={{ display: "flex", alignItems: "center", gap: "4px", color: /\d/.test(password) ? "var(--lime)" : "var(--ink-2)" }}>
+                        <span>{/\d/.test(password) ? "✓" : "○"}</span> Números
+                      </li>
+                      <li style={{ display: "flex", alignItems: "center", gap: "4px", color: /[^A-Za-z0-9]/.test(password) ? "var(--lime)" : "var(--ink-2)" }}>
+                        <span>{/[^A-Za-z0-9]/.test(password) ? "✓" : "○"}</span> Símbolos
+                      </li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </label>
+          
           {error ? <p className="form-error">{error}</p> : null}
           <button className="save-pick" type="submit" disabled={busy}>{busy ? "Calentando..." : mode === "signup" ? "Tu Mundial empieza aquí" : "Volver a mi liga"}</button>
+          <div style={{ textAlign: "center", margin: "4px 0", color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: "11px" }}>o</div>
+          <button
+            type="button"
+            className="google-btn glass"
+            onClick={() => {
+              window.location.href = `/api/auth/google?join=${inviteCode || ""}`;
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "10px",
+              width: "100%",
+              padding: "13px 14px",
+              borderRadius: "14px",
+              border: "1px solid var(--line)",
+              background: "rgba(255,255,255,0.03)",
+              color: "var(--ink-0)",
+              fontFamily: "var(--sans)",
+              fontSize: "14px",
+              fontWeight: "bold",
+              cursor: "pointer",
+              transition: "background 0.2s, transform 0.1s"
+            }}
+          >
+            <svg width="18" height="18" viewBox="0 0 18 18">
+              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
+              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A9 9 0 0 0 9 18z" fill="#34A853"/>
+              <path d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707 0-.59.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+              <path d="M9 3.58c1.32 0 2.5.454 3.436 1.353l2.58-2.58C13.46 1.002 11.427 0 9 0A9 9 0 0 0 .957 4.961l3.007 2.332C4.672 5.164 6.656 3.58 9 3.58z" fill="#EA4335"/>
+            </svg>
+            <span>{mode === "signup" ? "Registrarse con Google" : "Iniciar sesión con Google"}</span>
+          </button>
         </form>
       </section>
     </main>
@@ -1021,17 +1313,6 @@ type ActivityItem = {
   updatedAt: number;
 };
 
-type ChatMessage = {
-  id: string;
-  author: string;
-  avatar: string;
-  time: string;
-  text: string;
-  mine?: boolean;
-  media?: "gif";
-  reactions?: { emoji: string; count: number }[];
-};
-
 function LeagueScreen({
   leagueId,
   leagues,
@@ -1039,6 +1320,7 @@ function LeagueScreen({
   onLeave,
   onInvite,
   currentUser,
+  sessionToken,
 }: {
   leagueId: Id<"leagues"> | null;
   leagues: LeagueSummary[];
@@ -1046,6 +1328,7 @@ function LeagueScreen({
   onLeave: (id: Id<"leagues">) => void;
   onInvite: () => void;
   currentUser: AuthUser;
+  sessionToken: string;
 }) {
   const members = useQuery(api.leagues.members, leagueId ? { leagueId } : "skip");
   const recent = useQuery(api.picks.recentInLeague, leagueId ? { leagueId } : "skip");
@@ -1080,7 +1363,13 @@ function LeagueScreen({
             </div>
           </section>
 
-          <LeagueChat leagueName={activeLeagueName} currentUser={currentUser} memberCount={members?.length ?? 0} />
+          <LeagueChat
+            leagueId={leagueId}
+            leagueName={activeLeagueName}
+            currentUser={currentUser}
+            memberCount={members?.length ?? 0}
+            sessionToken={sessionToken}
+          />
 
           <div className="league-side-panels">
             <section className="content-card glass">
@@ -1122,33 +1411,56 @@ function LeagueScreen({
 }
 
 function LeagueChat({
+  leagueId,
   leagueName,
   currentUser,
   memberCount,
+  sessionToken,
 }: {
+  leagueId: Id<"leagues">;
   leagueName: string;
   currentUser: AuthUser;
   memberCount: number;
+  sessionToken: string;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messages = useQuery(api.chat.list, { leagueId, limit: 100 }) as
+    | {
+        _id: Id<"chatMessages">;
+        userId: Id<"users">;
+        name: string;
+        avatar: string;
+        text: string;
+        createdAt: number;
+      }[]
+    | undefined;
+  const sendMutation = useMutation(api.chat.send);
   const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const feedRef = useRef<HTMLDivElement | null>(null);
 
-  const send = () => {
+  useEffect(() => {
+    if (!feedRef.current) return;
+    feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [messages?.length]);
+
+  const send = async () => {
     const text = draft.trim();
-    if (!text) return;
-    setMessages((items) => [
-      ...items,
-      {
-        id: `local-${Date.now()}`,
-        author: "vos",
-        avatar: currentUser.avatar || "⚡",
-        time: new Intl.DateTimeFormat("es", { hour: "2-digit", minute: "2-digit" }).format(new Date()),
-        text,
-        mine: true,
-      },
-    ]);
-    setDraft("");
+    if (!text || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await sendMutation({ sessionToken, leagueId, text });
+      setDraft("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo enviar");
+    } finally {
+      setSending(false);
+    }
   };
+
+  const formatTime = (ts: number) =>
+    new Intl.DateTimeFormat("es", { hour: "2-digit", minute: "2-digit" }).format(new Date(ts));
 
   return (
     <section className="chat-screen">
@@ -1159,38 +1471,49 @@ function LeagueChat({
         </div>
         <button type="button">•••</button>
       </header>
-      <div className="chat-feed">
-        {messages.length === 0 ? (
-          <div className="chat-empty">Sin mensajes reales todavía.</div>
+      <div className="chat-feed" ref={feedRef}>
+        {messages === undefined ? (
+          <div className="chat-empty">Cargando chat…</div>
+        ) : messages.length === 0 ? (
+          <div className="chat-empty">Sin mensajes todavía. Rompe el hielo.</div>
         ) : (
-          messages.map((message) => (
-            <article className={`chat-message ${message.mine ? "mine" : ""}`} key={message.id}>
-              {!message.mine ? <span className="chat-avatar">{message.avatar}</span> : null}
-              <div className="chat-stack">
-                {!message.mine ? <div className="chat-name"><strong>{message.author}</strong><span>·</span><time>{message.time}</time></div> : null}
-                <div className={`chat-bubble ${message.media ? "media" : ""}`}>
-                  {message.media ? <span className="gif-card"><b>🎬</b><em>{message.text}</em></span> : message.text}
+          messages.map((message) => {
+            const mine = message.userId === currentUser._id;
+            return (
+              <article className={`chat-message ${mine ? "mine" : ""}`} key={message._id}>
+                {!mine ? <span className="chat-avatar">{message.avatar}</span> : null}
+                <div className="chat-stack">
+                  {!mine ? (
+                    <div className="chat-name">
+                      <strong>{message.name}</strong>
+                      <span>·</span>
+                      <time>{formatTime(message.createdAt)}</time>
+                    </div>
+                  ) : null}
+                  <div className="chat-bubble">{message.text}</div>
                 </div>
-                {message.reactions && !message.mine ? (
-                  <div className="chat-reactions">
-                    {message.reactions.map((reaction) => <button type="button" key={reaction.emoji}>{reaction.emoji} {reaction.count}</button>)}
-                  </div>
-                ) : null}
-              </div>
-            </article>
-          ))
+              </article>
+            );
+          })
         )}
       </div>
+      {error ? <p className="form-error" style={{ padding: "0 12px" }}>{error}</p> : null}
       <form
         className="chat-composer"
         onSubmit={(event) => {
           event.preventDefault();
-          send();
+          void send();
         }}
       >
-        <button type="button" aria-label="Adjuntar">＋</button>
-        <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Tira tu comentario..." />
-        <button type="submit" aria-label="Enviar">➤</button>
+        <button type="button" aria-label="Adjuntar" disabled>＋</button>
+        <input
+          value={draft}
+          maxLength={500}
+          onChange={(event) => setDraft(event.target.value)}
+          placeholder="Tira tu comentario..."
+          disabled={sending}
+        />
+        <button type="submit" aria-label="Enviar" disabled={sending || !draft.trim()}>➤</button>
       </form>
     </section>
   );
@@ -1644,7 +1967,7 @@ export default function Home() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [savingPick, setSavingPick] = useState(false);
 
-  const { user, loading: authLoading, signup, login, logout } = useAuth();
+  const { sessionToken, user, loading: authLoading, signup, login, logout } = useAuth();
   const userId = user?._id ?? null;
   const myLeagues = useQuery(api.leagues.listForUser, userId ? { userId } : "skip") as LeagueSummary[] | undefined;
   const { activeLeagueId, setActive } = useActiveLeague(myLeagues);
@@ -1668,26 +1991,31 @@ export default function Home() {
     if (!userId) return;
     const seen = window.localStorage.getItem("parleyia:onboarded");
     if (!seen && myLeagues && myLeagues.length === 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setShowOnboarding(true);
+      const code = new URLSearchParams(window.location.search).get("join");
+      if (!code) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setShowOnboarding(true);
+      } else {
+        window.localStorage.setItem("parleyia:onboarded", "yes");
+      }
     }
   }, [userId, myLeagues]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !sessionToken) return;
     const code = new URLSearchParams(window.location.search).get("join");
     if (!code) return;
     const key = `parleyia:joined:${code.toUpperCase()}`;
     if (window.localStorage.getItem(key)) return;
     window.localStorage.setItem(key, "yes");
-    joinLeague({ userId, code })
+    joinLeague({ sessionToken, code })
       .then((result) => {
         setActive(result.leagueId);
         setToast("Te uniste desde el link");
         setScreen("liga");
       })
       .catch((err) => setToast(err instanceof Error ? err.message : "Link inválido"));
-  }, [joinLeague, setActive, userId]);
+  }, [joinLeague, sessionToken, setActive, userId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -1732,7 +2060,7 @@ export default function Home() {
 
   const savePickFor = useCallback(
     async (fixture: Fixture, pick: LocalPick) => {
-      if (!userId || !activeLeagueId) {
+      if (!sessionToken || !activeLeagueId) {
         if (!activeLeagueId) {
           setToast("Crea o únete a una liga primero");
           setShowOnboarding(true);
@@ -1740,15 +2068,15 @@ export default function Home() {
         throw new Error("Sin liga activa");
       }
       await savePickMutation({
+        sessionToken,
         leagueId: activeLeagueId,
-        userId,
         fixtureId: fixture.id,
         home: pick.home,
         away: pick.away,
         bonus: pick.bonus,
       });
     },
-    [activeLeagueId, savePickMutation, userId]
+    [activeLeagueId, savePickMutation, sessionToken]
   );
 
   const savePickFromModal = async (pick: LocalPick) => {
@@ -1772,11 +2100,11 @@ export default function Home() {
   };
 
   const handleCreate = async (name: string) => {
-    if (!userId) return;
+    if (!sessionToken) return;
     setOnboardingError(null);
     setOnboardingBusy(true);
     try {
-      const result = await createLeague({ userId, name });
+      const result = await createLeague({ sessionToken, name });
       setActive(result.leagueId);
       setToast(`Liga creada · código ${result.code}`);
       closeOnboarding();
@@ -1789,11 +2117,11 @@ export default function Home() {
   };
 
   const handleJoin = async (code: string) => {
-    if (!userId) return;
+    if (!sessionToken) return;
     setOnboardingError(null);
     setOnboardingBusy(true);
     try {
-      const result = await joinLeague({ userId, code });
+      const result = await joinLeague({ sessionToken, code });
       setActive(result.leagueId);
       setToast(`Te uniste a la liga`);
       closeOnboarding();
@@ -1807,25 +2135,39 @@ export default function Home() {
 
   const handleInvite = async () => {
     if (!activeLeague) return;
-    const link = `${window.location.origin}?join=${activeLeague.code}`;
+    const link = `${window.location.origin}/join/${activeLeague.code}`;
+    const text = `🏆 Te reto a unirte a mi liga "${activeLeague.name}" en ParlAI Mundial. ¿Sabes más de fútbol que yo? Compite conmigo aquí:`;
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Liga ${activeLeague.name} · ParlAI Mundial`,
+          text: text,
+          url: link,
+        });
+        return;
+      } catch {
+        // Fallback if share sheet is closed or fails
+      }
+    }
     try {
-      await navigator.clipboard.writeText(link);
-      setToast(`Link de liga copiado · ${activeLeague.code}`);
+      await navigator.clipboard.writeText(`${text} ${link}`);
+      setToast(`Mensaje copiado · ${activeLeague.code}`);
     } catch {
       setToast(`Código: ${activeLeague.code}`);
     }
   };
 
+
   const handleUpdateProfile = async (profile: { name: string; handle: string; avatar: string; favoriteTeam?: string }) => {
-    if (!userId) return;
-    await updateProfile({ userId, ...profile });
+    if (!sessionToken) return;
+    await updateProfile({ sessionToken, ...profile });
     setToast("Perfil actualizado");
   };
 
   const handleLeave = async (leagueId: Id<"leagues">) => {
-    if (!userId) return;
+    if (!sessionToken) return;
     try {
-      await leaveLeague({ leagueId, userId });
+      await leaveLeague({ sessionToken, leagueId });
       setToast("Saliste de la liga");
     } catch (err) {
       setToast(err instanceof Error ? err.message : "No se pudo salir");
@@ -1867,7 +2209,12 @@ export default function Home() {
     setAuthError(null);
     try {
       await signup(args);
-      setShowOnboarding(true);
+      const code = new URLSearchParams(window.location.search).get("join");
+      if (!code) {
+        setShowOnboarding(true);
+      } else {
+        window.localStorage.setItem("parleyia:onboarded", "yes");
+      }
     } catch (err) {
       setAuthError(err instanceof Error ? err.message : "No se pudo crear la cuenta");
     } finally {
@@ -1921,7 +2268,17 @@ export default function Home() {
           <MatchesScreen picks={picks} savePickFor={savePickFor} openPick={openPick} />
         )}
         {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} />}
-        {screen === "liga" && <LeagueScreen leagueId={activeLeagueId} leagues={leagues} setActive={setActive} onLeave={handleLeave} onInvite={handleInvite} currentUser={user} />}
+        {screen === "liga" && sessionToken && (
+          <LeagueScreen
+            leagueId={activeLeagueId}
+            leagues={leagues}
+            setActive={setActive}
+            onLeave={handleLeave}
+            onInvite={handleInvite}
+            currentUser={user}
+            sessionToken={sessionToken}
+          />
+        )}
         {screen === "perfil" && (
           <ProfileScreen
             picks={picks}
