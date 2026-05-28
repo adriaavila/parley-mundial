@@ -14,6 +14,20 @@ export const metadata: Metadata = {
     description: "Crea una liga, invita por WhatsApp, gana el Mundial entre amigos.",
     url: "/landing/ligas",
     type: "website",
+    images: [
+      {
+        url: "/landing/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Ligas privadas — ParlAI Mundial",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Ligas privadas — ParlAI Mundial",
+    description: "Crea una liga, invita por WhatsApp, gana el Mundial entre amigos.",
+    images: ["/landing/opengraph-image"],
   },
 };
 

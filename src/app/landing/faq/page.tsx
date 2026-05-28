@@ -50,6 +50,20 @@ export const metadata: Metadata = {
     description: "Cómo jugar, ligas privadas, puntos y más.",
     url: "/landing/faq",
     type: "website",
+    images: [
+      {
+        url: "/landing/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Preguntas frecuentes — ParlAI",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Preguntas frecuentes — ParlAI",
+    description: "Cómo jugar, ligas privadas, puntos y más.",
+    images: ["/landing/opengraph-image"],
   },
 };
 

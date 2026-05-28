@@ -50,43 +50,86 @@ export default async function Image({ params }: { params: Promise<{ code: string
           flexDirection: "column",
           justifyContent: "space-between",
           padding: 72,
-          backgroundImage: backgroundImage
-            ? `linear-gradient(to bottom, rgba(8, 9, 11, 0.3) 0%, rgba(8, 9, 11, 0.85) 100%), url(${backgroundImage})`
-            : "linear-gradient(135deg, #07080a, #08090b)",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
+          backgroundColor: "#08090b",
           color: "#f7f8f4",
           fontFamily: "system-ui, -apple-system, sans-serif",
+          position: "relative",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <span style={{ fontSize: 22, letterSpacing: 6, color: "#c8cbc4", textTransform: "uppercase", fontWeight: 600 }}>
-              Mundial 2026 · Invitación
-            </span>
-            <strong style={{ fontSize: 80, color: "#c6ff3d", letterSpacing: -2, lineHeight: 1, fontStyle: "italic", fontWeight: 900 }}>
-              PARLAI
-            </strong>
-          </div>
-          <div style={{ fontSize: 80, display: "flex" }}>🏆</div>
-        </div>
+        {backgroundImage ? (
+          <img
+            src={backgroundImage}
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+            }}
+          />
+        ) : (
+          <div
+            style={{
+              position: "absolute",
+              top: 0,
+              left: 0,
+              width: "100%",
+              height: "100%",
+              background: "linear-gradient(135deg, #07080a, #08090b)",
+            }}
+          />
+        )}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background: "linear-gradient(to bottom, rgba(8, 9, 11, 0.3) 0%, rgba(8, 9, 11, 0.85) 100%)",
+          }}
+        />
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-          <span style={{ fontSize: 54, fontWeight: 800, letterSpacing: -1.5, lineHeight: 1.1, maxWidth: 980, textShadow: "0 4px 12px rgba(0,0,0,0.6)" }}>
-            {found
-              ? `¡Únete a la liga "${leagueName}" de ${ownerName}! Y gánale a todos.`
-              : "Domina el pronóstico del Mundial 2026 con tus amigos."}
-          </span>
-          <div style={{ display: "flex", gap: 16 }}>
-            <span style={{ padding: "10px 20px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.22)", background: "rgba(8, 9, 11, 0.65)", fontSize: 22, color: "#f7f8f4", fontWeight: 600 }}>
-              Código: {normalizedCode || "INVITE"}
+        <div
+          style={{
+            position: "relative",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            width: "100%",
+            height: "100%",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <span style={{ fontSize: 22, letterSpacing: 6, color: "#c8cbc4", textTransform: "uppercase", fontWeight: 600 }}>
+                Mundial 2026 · Invitación
+              </span>
+              <strong style={{ fontSize: 80, color: "#c6ff3d", letterSpacing: -2, lineHeight: 1, fontStyle: "italic", fontWeight: 900 }}>
+                PARLAI
+              </strong>
+            </div>
+            <div style={{ fontSize: 80, display: "flex" }}>🏆</div>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            <span style={{ fontSize: 54, fontWeight: 800, letterSpacing: -1.5, lineHeight: 1.1, maxWidth: 980, textShadow: "0 4px 12px rgba(0,0,0,0.6)" }}>
+              {found
+                ? `¡Únete a la liga "${leagueName}" de ${ownerName}! Y gánale a todos.`
+                : "Domina el pronóstico del Mundial 2026 con tus amigos."}
             </span>
-            <span style={{ padding: "10px 20px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.22)", background: "rgba(8, 9, 11, 0.65)", fontSize: 22, color: "#f7f8f4", fontWeight: 600 }}>
-              {memberCount} {memberCount === 1 ? "participante" : "participantes"}
-            </span>
-            <span style={{ padding: "10px 20px", borderRadius: 999, background: "#c6ff3d", color: "#0a0b0d", fontSize: 22, fontWeight: 800 }}>
-              Gratis · WhatsApp-first
-            </span>
+            <div style={{ display: "flex", gap: 16 }}>
+              <span style={{ padding: "10px 20px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.22)", background: "rgba(8, 9, 11, 0.65)", fontSize: 22, color: "#f7f8f4", fontWeight: 600 }}>
+                Código: {normalizedCode || "INVITE"}
+              </span>
+              <span style={{ padding: "10px 20px", borderRadius: 999, border: "1px solid rgba(255,255,255,0.22)", background: "rgba(8, 9, 11, 0.65)", fontSize: 22, color: "#f7f8f4", fontWeight: 600 }}>
+                {memberCount} {memberCount === 1 ? "participante" : "participantes"}
+              </span>
+              <span style={{ padding: "10px 20px", borderRadius: 999, background: "#c6ff3d", color: "#0a0b0d", fontSize: 22, fontWeight: 800 }}>
+                Gratis · WhatsApp-first
+              </span>
+            </div>
           </div>
         </div>
       </div>

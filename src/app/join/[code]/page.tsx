@@ -25,11 +25,20 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
           description,
           url: `/join/${normalizedCode}`,
           type: "website",
+          images: [
+            {
+              url: `/join/${normalizedCode}/opengraph-image`,
+              width: 1200,
+              height: 630,
+              alt: title,
+            },
+          ],
         },
         twitter: {
           card: "summary_large_image",
           title,
           description,
+          images: [`/join/${normalizedCode}/opengraph-image`],
         },
       };
     }
@@ -40,6 +49,26 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: "Invitación a Liga — ParlAI Mundial 2026",
     description: "Te invitaron a competir en una liga de ParlAI Mundial. Crea tus pronósticos y juega con tus amigos.",
+    openGraph: {
+      title: "Invitación a Liga — ParlAI Mundial 2026",
+      description: "Te invitaron a competir en una liga de ParlAI Mundial. Crea tus pronósticos y juega con tus amigos.",
+      url: `/join/${normalizedCode}`,
+      type: "website",
+      images: [
+        {
+          url: `/join/${normalizedCode}/opengraph-image`,
+          width: 1200,
+          height: 630,
+          alt: "Invitación a Liga — ParlAI Mundial 2026",
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: "Invitación a Liga — ParlAI Mundial 2026",
+      description: "Te invitaron a competir en una liga de ParlAI Mundial. Crea tus pronósticos y juega con tus amigos.",
+      images: [`/join/${normalizedCode}/opengraph-image`],
+    },
   };
 }
 

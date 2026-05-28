@@ -18,12 +18,21 @@ export const metadata: Metadata = {
       "Crea ligas privadas, predice cada partido del Mundial y compite con tus amigos. Gratis.",
     url: "/landing",
     type: "website",
+    images: [
+      {
+        url: "/landing/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "ParlAI Mundial 2026 — Domina el Pronóstico",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "ParlAI Mundial 2026 — Domina el Pronóstico",
     description:
       "Crea ligas privadas, predice cada partido del Mundial y compite con tus amigos. Gratis.",
+    images: ["/landing/opengraph-image"],
   },
 };
 

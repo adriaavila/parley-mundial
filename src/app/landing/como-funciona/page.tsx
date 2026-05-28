@@ -10,9 +10,23 @@ export const metadata: Metadata = {
   alternates: { canonical: "/landing/como-funciona" },
   openGraph: {
     title: "Cómo funciona ParlAI Mundial",
-    description: "Sistema de puntos, ligas privadas y pronósticos del Mundial 2026.",
+    description: "Sistema de puntos, ligas privadas and pronósticos del Mundial 2026.",
     url: "/landing/como-funciona",
     type: "website",
+    images: [
+      {
+        url: "/landing/opengraph-image",
+        width: 1200,
+        height: 630,
+        alt: "Cómo funciona ParlAI Mundial",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Cómo funciona ParlAI Mundial",
+    description: "Sistema de puntos, ligas privadas and pronósticos del Mundial 2026.",
+    images: ["/landing/opengraph-image"],
   },
 };
 
