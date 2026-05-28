@@ -1,10 +1,15 @@
 import Link from "next/link";
+import { BallMark } from "./BallMark";
 
 export function Footer() {
   return (
     <footer className="py-12 border-t border-border bg-black/40">
       <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row justify-between items-center gap-6">
-        <Link href="/landing" className="font-display text-xl uppercase italic">
+        <Link
+          href="/landing"
+          className="flex items-center gap-2.5 font-display text-xl uppercase italic"
+        >
+          <BallMark size={24} />
           ParlAI <span className="text-primary">2026</span>
         </Link>
         <nav className="flex gap-6 font-mono text-xs uppercase tracking-widest text-muted-foreground">

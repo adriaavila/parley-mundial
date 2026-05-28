@@ -325,7 +325,7 @@ export const sendResetCode = action({
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: "Parlai Mundial <noreply@resend.dev>",
+          from: "Parlai Mundial <contacto@servicioscreativos.online>",
           to: result.email,
           subject: "Recuperación de contraseña - Parlai Mundial",
           html: `
