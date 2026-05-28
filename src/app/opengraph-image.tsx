@@ -1,4 +1,6 @@
 import { ImageResponse } from "next/og";
+import { readFileSync } from "fs";
+import { join } from "path";
 
 // Use the default Fluid Compute / Node.js runtime (edge is no longer recommended on Vercel).
 export const alt = "ParlAI Mundial 2026 — Domina el Pronóstico";
@@ -6,6 +8,15 @@ export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 export default function OpengraphImage() {
+  let backgroundImage = "";
+  try {
+    const imagePath = join(process.cwd(), "public/landing/hero-stadium.jpg");
+    const imageBuffer = readFileSync(imagePath);
+    backgroundImage = `data:image/jpeg;base64,${imageBuffer.toString("base64")}`;
+  } catch (error) {
+    console.error("Error reading hero stadium image for root OG:", error);
+  }
+
   return new ImageResponse(
     (
       <div
@@ -16,10 +27,11 @@ export default function OpengraphImage() {
           flexDirection: "column",
           justifyContent: "space-between",
           padding: 72,
-          background:
-            "radial-gradient(circle at 18% 4%, rgba(198,255,61,0.22), transparent 38%)," +
-            "radial-gradient(circle at 82% 92%, rgba(59,130,255,0.28), transparent 42%)," +
-            "linear-gradient(135deg, #07080a, #08090b)",
+          backgroundImage: backgroundImage
+            ? `linear-gradient(to bottom, rgba(8, 9, 11, 0.3) 0%, rgba(8, 9, 11, 0.85) 100%), url(${backgroundImage})`
+            : "linear-gradient(135deg, #07080a, #08090b)",
+          backgroundSize: "cover",
+          backgroundPosition: "center",
           color: "#f7f8f4",
           fontFamily: "system-ui, -apple-system, sans-serif",
         }}
