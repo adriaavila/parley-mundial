@@ -930,17 +930,21 @@ function generateMemorablePassword() {
 function AuthScreen({
   onSignup,
   onLogin,
+  onReset,
+  onVerifyReset,
   onGoogleLogin,
   busy,
   error,
 }: {
   onSignup: (args: { email: string; password: string; name: string; handle: string; avatar: string; favoriteTeam?: string }) => void;
   onLogin: (args: { email: string; password: string }) => void;
+  onReset: (args: { email: string }) => Promise<void>;
+  onVerifyReset: (args: { email: string; code: string; newPassword: string }) => Promise<void>;
   onGoogleLogin: () => void;
   busy: boolean;
   error: string | null;
 }) {
-  const [mode, setMode] = useState<"signup" | "login">("signup");
+  const [mode, setMode] = useState<"signup" | "login" | "forgot" | "reset-code">("signup");
   const [name, setName] = useState("");
   const [handle, setHandle] = useState("");
   const [email, setEmail] = useState("");
@@ -949,6 +953,7 @@ function AuthScreen({
   const [favoriteTeam, setFavoriteTeam] = useState("arg");
   const [showPassword, setShowPassword] = useState(false);
   const [inviteCode, setInviteCode] = useState("");
+  const [resetCode, setResetCode] = useState("");
 
   // Easy Sign Up / Custom Password States
   const [passwordMode, setPasswordMode] = useState<"easy" | "custom">("easy");
@@ -993,8 +998,22 @@ function AuthScreen({
       <section className="auth-card glass-strong">
         <div className="auth-copy">
           <span>ParlAI Mundial 2026</span>
-          <h1>Bienvenido a la jugada mundialera.</h1>
-          <p>Arma tu perfil antes del pitazo, crea una liga y empieza a pelear la tabla del Mundial.</p>
+          {mode === "forgot" ? (
+            <>
+              <h1>Recuperar acceso.</h1>
+              <p>Ingresa tu correo para recibir un código de recuperación en la consola de desarrollo.</p>
+            </>
+          ) : mode === "reset-code" ? (
+            <>
+              <h1>Restablecer clave.</h1>
+              <p>Ingresa el código impreso en la terminal y tu nueva contraseña de guerra.</p>
+            </>
+          ) : (
+            <>
+              <h1>Bienvenido a la jugada mundialera.</h1>
+              <p>Arma tu perfil antes del pitazo, crea una liga y empieza a pelear la tabla del Mundial.</p>
+            </>
+          )}
           <p style={{ marginTop: 14 }}>
             <a href="/landing" style={{ color: "var(--lime)", fontFamily: "var(--mono)", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", textDecoration: "none" }}>
               ¿Primera vez? Conoce cómo funciona →
@@ -1003,12 +1022,12 @@ function AuthScreen({
         </div>
         <form
           className="auth-form"
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
             const formEmail = String(data.get("email") ?? email);
-            const formPassword = mode === "signup" && passwordMode === "easy" ? easyPassword : String(data.get("password") ?? password);
             if (mode === "signup") {
+              const formPassword = passwordMode === "easy" ? easyPassword : String(data.get("password") ?? password);
               onSignup({
                 email: formEmail,
                 password: formPassword,
@@ -1017,10 +1036,23 @@ function AuthScreen({
                 avatar: String(data.get("avatar") ?? avatar),
                 favoriteTeam: String(data.get("favoriteTeam") ?? favoriteTeam) || undefined,
               });
-            } else onLogin({ email: formEmail, password: formPassword });
+            } else if (mode === "login") {
+              onLogin({ email: formEmail, password: String(data.get("password") ?? password) });
+            } else if (mode === "forgot") {
+              try {
+                await onReset({ email: formEmail });
+                setMode("reset-code");
+              } catch {
+                // Keep in forgot mode
+              }
+            } else if (mode === "reset-code") {
+              const code = String(data.get("code") ?? resetCode);
+              const formPassword = String(data.get("password") ?? password);
+              onVerifyReset({ email: formEmail, code, newPassword: formPassword });
+            }
           }}
         >
-          {league && (
+          {league && (mode === "signup" || mode === "login") && (
             <div className="glass" style={{
               padding: "16px",
               borderRadius: "16px",
@@ -1046,10 +1078,12 @@ function AuthScreen({
               </div>
             </div>
           )}
-          <div className="segmented">
-            <button type="button" className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Crear cuenta</button>
-            <button type="button" className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Entrar</button>
-          </div>
+          {mode !== "forgot" && mode !== "reset-code" ? (
+            <div className="segmented">
+              <button type="button" className={mode === "signup" ? "active" : ""} onClick={() => setMode("signup")}>Crear cuenta</button>
+              <button type="button" className={mode === "login" ? "active" : ""} onClick={() => setMode("login")}>Entrar</button>
+            </div>
+          ) : null}
           {mode === "signup" ? (
             <>
               <label><span>Nombre de guerra</span><input name="name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Leo del grupo" required minLength={2} /></label>
@@ -1082,207 +1116,329 @@ function AuthScreen({
           ) : null}
           <label><span>Email</span><input name="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="tu@email.com" required /></label>
           
-          <label style={{ position: "relative" }}>
-            {mode === "signup" ? (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                <span style={{ margin: 0 }}>Clave</span>
-                <div className="password-mode-selector" style={{ display: "flex", gap: "4px" }}>
-                  <button
-                    type="button"
-                    onClick={() => setPasswordMode("easy")}
-                    className={passwordMode === "easy" ? "active" : ""}
-                    style={{
-                      background: passwordMode === "easy" ? "var(--lime)" : "rgba(255,255,255,0.03)",
-                      color: passwordMode === "easy" ? "#070808" : "var(--ink-2)",
-                      border: "1px solid var(--line)",
-                      borderRadius: "6px",
-                      padding: "2px 8px",
-                      fontSize: "10px",
-                      fontFamily: "var(--mono)",
-                      cursor: "pointer",
-                      fontWeight: "bold",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    Fácil ⚡
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPasswordMode("custom")}
-                    className={passwordMode === "custom" ? "active" : ""}
-                    style={{
-                      background: passwordMode === "custom" ? "var(--lime)" : "rgba(255,255,255,0.03)",
-                      color: passwordMode === "custom" ? "#070808" : "var(--ink-2)",
-                      border: "1px solid var(--line)",
-                      borderRadius: "6px",
-                      padding: "2px 8px",
-                      fontSize: "10px",
-                      fontFamily: "var(--mono)",
-                      cursor: "pointer",
-                      fontWeight: "bold",
-                      transition: "all 0.2s"
-                    }}
-                  >
-                    Manual 🔐
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <span>Clave</span>
-            )}
+          {mode === "reset-code" && (
+            <label>
+              <span>Código de recuperación</span>
+              <input
+                name="code"
+                type="text"
+                value={resetCode}
+                onChange={(event) => setResetCode(event.target.value)}
+                placeholder="123456"
+                required
+                minLength={6}
+                maxLength={6}
+                style={{
+                  fontFamily: "var(--mono)",
+                  letterSpacing: "4px",
+                  textAlign: "center",
+                  fontSize: "18px",
+                  fontWeight: "bold",
+                  color: "var(--lime)",
+                  background: "rgba(198, 255, 61, 0.03)",
+                  borderColor: "rgba(198, 255, 61, 0.25)"
+                }}
+              />
+            </label>
+          )}
 
-            {mode === "signup" && passwordMode === "easy" ? (
-              <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: "4px" }}>
-                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <input
-                    type="text"
-                    value={easyPassword}
-                    readOnly
-                    style={{
-                      width: "100%",
-                      paddingRight: "70px",
-                      fontFamily: "var(--mono)",
-                      color: "var(--lime)",
-                      background: "rgba(198, 255, 61, 0.03)",
-                      borderColor: "rgba(198, 255, 61, 0.25)"
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void navigator.clipboard.writeText(easyPassword);
-                      setCopied(true);
-                      setTimeout(() => setCopied(false), 2000);
-                    }}
-                    style={{
-                      position: "absolute",
-                      right: "12px",
-                      background: "none",
-                      border: "none",
-                      color: copied ? "var(--lime)" : "var(--ink-2)",
-                      fontFamily: "var(--mono)",
-                      fontSize: "11px",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                      padding: "4px 8px"
-                    }}
-                  >
-                    {copied ? "COPIADA" : "COPIAR"}
-                  </button>
-                </div>
-                <span style={{ display: "block", fontSize: "10px", color: "var(--ink-2)", textTransform: "none", fontFamily: "var(--sans)", marginTop: "2px" }}>
-                  🔒 Clave segura auto-generada. Cópiala para otros dispositivos.{" "}
-                  <button
-                    type="button"
-                    onClick={() => setEasyPassword(generateMemorablePassword())}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: "var(--lime)",
-                      textDecoration: "underline",
-                      cursor: "pointer",
-                      padding: 0,
-                      font: "inherit",
-                      fontSize: "10px"
-                    }}
-                  >
-                    Generar otra
-                  </button>
-                </span>
-              </div>
-            ) : (
-              <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: "4px" }}>
-                <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-                  <input
-                    name="password"
-                    type={showPassword ? "text" : "password"}
-                    value={password}
-                    onChange={(event) => setPassword(event.target.value)}
-                    minLength={8}
-                    required
-                    style={{ width: "100%", paddingRight: "70px" }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    style={{
-                      position: "absolute",
-                      right: "12px",
-                      background: "none",
-                      border: "none",
-                      color: "var(--lime)",
-                      fontFamily: "var(--mono)",
-                      fontSize: "11px",
-                      fontWeight: "bold",
-                      cursor: "pointer",
-                      padding: "4px 8px"
-                    }}
-                  >
-                    {showPassword ? "OCULTAR" : "VER"}
-                  </button>
-                </div>
-                {mode === "signup" && (
-                  <div className="strength-container" style={{ marginTop: "6px" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", marginBottom: "4px" }}>
-                      <span style={{ color: "var(--ink-2)" }}>Seguridad:</span>
-                      <span style={{ color: strength.color, fontWeight: "bold" }}>{strength.label}</span>
-                    </div>
-                    <div style={{ height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden", marginBottom: "6px" }}>
-                      <div style={{ height: "100%", width: `${(strength.score / 4) * 100}%`, background: strength.color, transition: "width 0.3s ease" }} />
-                    </div>
-                    <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px", fontSize: "9px" }}>
-                      <li style={{ display: "flex", alignItems: "center", gap: "4px", color: password.length >= 8 ? "var(--lime)" : "var(--ink-2)" }}>
-                        <span>{password.length >= 8 ? "✓" : "○"}</span> 8+ caracteres
-                      </li>
-                      <li style={{ display: "flex", alignItems: "center", gap: "4px", color: (/[a-z]/.test(password) && /[A-Z]/.test(password)) ? "var(--lime)" : "var(--ink-2)" }}>
-                        <span>{(/[a-z]/.test(password) && /[A-Z]/.test(password)) ? "✓" : "○"}</span> Mayús y minús
-                      </li>
-                      <li style={{ display: "flex", alignItems: "center", gap: "4px", color: /\d/.test(password) ? "var(--lime)" : "var(--ink-2)" }}>
-                        <span>{/\d/.test(password) ? "✓" : "○"}</span> Números
-                      </li>
-                      <li style={{ display: "flex", alignItems: "center", gap: "4px", color: /[^A-Za-z0-9]/.test(password) ? "var(--lime)" : "var(--ink-2)" }}>
-                        <span>{/[^A-Za-z0-9]/.test(password) ? "✓" : "○"}</span> Símbolos
-                      </li>
-                    </ul>
+          {mode !== "forgot" && (
+            <label style={{ position: "relative" }}>
+              {mode === "signup" ? (
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                  <span style={{ margin: 0 }}>Clave</span>
+                  <div className="password-mode-selector" style={{ display: "flex", gap: "4px" }}>
+                    <button
+                      type="button"
+                      onClick={() => setPasswordMode("easy")}
+                      className={passwordMode === "easy" ? "active" : ""}
+                      style={{
+                        background: passwordMode === "easy" ? "var(--lime)" : "rgba(255,255,255,0.03)",
+                        color: passwordMode === "easy" ? "#070808" : "var(--ink-2)",
+                        border: "1px solid var(--line)",
+                        borderRadius: "6px",
+                        padding: "2px 8px",
+                        fontSize: "10px",
+                        fontFamily: "var(--mono)",
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      Fácil ⚡
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPasswordMode("custom")}
+                      className={passwordMode === "custom" ? "active" : ""}
+                      style={{
+                        background: passwordMode === "custom" ? "var(--lime)" : "rgba(255,255,255,0.03)",
+                        color: passwordMode === "custom" ? "#070808" : "var(--ink-2)",
+                        border: "1px solid var(--line)",
+                        borderRadius: "6px",
+                        padding: "2px 8px",
+                        fontSize: "10px",
+                        fontFamily: "var(--mono)",
+                        cursor: "pointer",
+                        fontWeight: "bold",
+                        transition: "all 0.2s"
+                      }}
+                    >
+                      Manual 🔐
+                    </button>
                   </div>
-                )}
-              </div>
-            )}
-          </label>
+                </div>
+              ) : (
+                <span>{mode === "reset-code" ? "Nueva clave" : "Clave"}</span>
+              )}
+
+              {mode === "signup" && passwordMode === "easy" ? (
+                <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <input
+                      type="text"
+                      value={easyPassword}
+                      readOnly
+                      style={{
+                        width: "100%",
+                        paddingRight: "70px",
+                        fontFamily: "var(--mono)",
+                        color: "var(--lime)",
+                        background: "rgba(198, 255, 61, 0.03)",
+                        borderColor: "rgba(198, 255, 61, 0.25)"
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(easyPassword);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      style={{
+                        position: "absolute",
+                        right: "12px",
+                        background: "none",
+                        border: "none",
+                        color: copied ? "var(--lime)" : "var(--ink-2)",
+                        fontFamily: "var(--mono)",
+                        fontSize: "11px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        padding: "4px 8px"
+                      }}
+                    >
+                      {copied ? "COPIADA" : "COPIAR"}
+                    </button>
+                  </div>
+                  <span style={{ display: "block", fontSize: "10px", color: "var(--ink-2)", textTransform: "none", fontFamily: "var(--sans)", marginTop: "2px" }}>
+                    🔒 Clave segura auto-generada. Cópiala para otros dispositivos.{" "}
+                    <button
+                      type="button"
+                      onClick={() => setEasyPassword(generateMemorablePassword())}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "var(--lime)",
+                        textDecoration: "underline",
+                        cursor: "pointer",
+                        padding: 0,
+                        font: "inherit",
+                        fontSize: "10px"
+                      }}
+                    >
+                      Generar otra
+                    </button>
+                  </span>
+                </div>
+              ) : (
+                <div style={{ position: "relative", display: "flex", flexDirection: "column", gap: "4px" }}>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+                    <input
+                      name="password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(event) => setPassword(event.target.value)}
+                      minLength={8}
+                      required
+                      style={{ width: "100%", paddingRight: "70px" }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      style={{
+                        position: "absolute",
+                        right: "12px",
+                        background: "none",
+                        border: "none",
+                        color: "var(--lime)",
+                        fontFamily: "var(--mono)",
+                        fontSize: "11px",
+                        fontWeight: "bold",
+                        cursor: "pointer",
+                        padding: "4px 8px"
+                      }}
+                    >
+                      {showPassword ? "OCULTAR" : "VER"}
+                    </button>
+                  </div>
+                  {(mode === "signup" || mode === "reset-code") && (
+                    <div className="strength-container" style={{ marginTop: "6px" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "10px", marginBottom: "4px" }}>
+                        <span style={{ color: "var(--ink-2)" }}>Seguridad:</span>
+                        <span style={{ color: strength.color, fontWeight: "bold" }}>{strength.label}</span>
+                      </div>
+                      <div style={{ height: "4px", background: "rgba(255,255,255,0.08)", borderRadius: "2px", overflow: "hidden", marginBottom: "6px" }}>
+                        <div style={{ height: "100%", width: `${(strength.score / 4) * 100}%`, background: strength.color, transition: "width 0.3s ease" }} />
+                      </div>
+                      <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2px", fontSize: "9px" }}>
+                        <li style={{ display: "flex", alignItems: "center", gap: "4px", color: password.length >= 8 ? "var(--lime)" : "var(--ink-2)" }}>
+                          <span>{password.length >= 8 ? "✓" : "○"}</span> 8+ caracteres
+                        </li>
+                        <li style={{ display: "flex", alignItems: "center", gap: "4px", color: (/[a-z]/.test(password) && /[A-Z]/.test(password)) ? "var(--lime)" : "var(--ink-2)" }}>
+                          <span>{(/[a-z]/.test(password) && /[A-Z]/.test(password)) ? "✓" : "○"}</span> Mayús y minús
+                        </li>
+                        <li style={{ display: "flex", alignItems: "center", gap: "4px", color: /\d/.test(password) ? "var(--lime)" : "var(--ink-2)" }}>
+                          <span>{/\d/.test(password) ? "✓" : "○"}</span> Números
+                        </li>
+                        <li style={{ display: "flex", alignItems: "center", gap: "4px", color: /[^A-Za-z0-9]/.test(password) ? "var(--lime)" : "var(--ink-2)" }}>
+                          <span>{/[^A-Za-z0-9]/.test(password) ? "✓" : "○"}</span> Símbolos
+                        </li>
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </label>
+          )}
+          
+          {mode === "login" && (
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "2px" }}>
+              <button
+                type="button"
+                onClick={() => setMode("forgot")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--lime)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                  padding: 0,
+                  textDecoration: "underline"
+                }}
+              >
+                ¿OLVIDASTE TU CONTRASEÑA?
+              </button>
+            </div>
+          )}
           
           {error ? <p className="form-error">{error}</p> : null}
-          <button className="save-pick" type="submit" disabled={busy}>{busy ? "Calentando..." : mode === "signup" ? "Tu Mundial empieza aquí" : "Volver a mi liga"}</button>
-          <div style={{ textAlign: "center", margin: "4px 0", color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: "11px" }}>o</div>
-          <button
-            type="button"
-            className="google-btn glass"
-            onClick={onGoogleLogin}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: "10px",
-              width: "100%",
-              padding: "13px 14px",
-              borderRadius: "14px",
-              border: "1px solid var(--line)",
-              background: "rgba(255,255,255,0.03)",
-              color: "var(--ink-0)",
-              fontFamily: "var(--sans)",
-              fontSize: "14px",
-              fontWeight: "bold",
-              cursor: "pointer",
-              transition: "background 0.2s, transform 0.1s"
-            }}
-          >
-            <svg width="18" height="18" viewBox="0 0 18 18">
-              <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
-              <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A9 9 0 0 0 9 18z" fill="#34A853"/>
-              <path d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707 0-.59.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
-              <path d="M9 3.58c1.32 0 2.5.454 3.436 1.353l2.58-2.58C13.46 1.002 11.427 0 9 0A9 9 0 0 0 .957 4.961l3.007 2.332C4.672 5.164 6.656 3.58 9 3.58z" fill="#EA4335"/>
-            </svg>
-            <span>{mode === "signup" ? "Registrarse con Google" : "Iniciar sesión con Google"}</span>
+          <button className="save-pick" type="submit" disabled={busy}>
+            {busy
+              ? "Calentando..."
+              : mode === "signup"
+                ? "Tu Mundial empieza aquí"
+                : mode === "login"
+                  ? "Volver a mi liga"
+                  : mode === "forgot"
+                    ? "Enviar código"
+                    : "Restablecer contraseña"}
           </button>
+          
+          {mode === "forgot" && (
+            <div style={{ display: "flex", justifyContent: "center", marginTop: "12px" }}>
+              <button
+                type="button"
+                onClick={() => setMode("login")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--lime)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                  padding: 0,
+                  textDecoration: "underline"
+                }}
+              >
+                VOLVER AL INICIO DE SESIÓN
+              </button>
+            </div>
+          )}
+
+          {mode === "reset-code" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: "10px", alignItems: "center", marginTop: "12px" }}>
+              <button
+                type="button"
+                onClick={() => setMode("forgot")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--lime)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                  padding: 0,
+                  textDecoration: "underline"
+                }}
+              >
+                PEDIR OTRO CÓDIGO
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("login")}
+                style={{
+                  background: "none",
+                  border: "none",
+                  color: "var(--ink-2)",
+                  fontFamily: "var(--mono)",
+                  fontSize: "11px",
+                  cursor: "pointer",
+                  padding: 0,
+                  textDecoration: "underline"
+                }}
+              >
+                CANCELAR Y VOLVER
+              </button>
+            </div>
+          )}
+
+          {mode !== "forgot" && mode !== "reset-code" ? (
+            <>
+              <div style={{ textAlign: "center", margin: "4px 0", color: "var(--ink-3)", fontFamily: "var(--mono)", fontSize: "11px" }}>o</div>
+              <button
+                type="button"
+                className="google-btn glass"
+                onClick={onGoogleLogin}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "10px",
+                  width: "100%",
+                  padding: "13px 14px",
+                  borderRadius: "14px",
+                  border: "1px solid var(--line)",
+                  background: "rgba(255,255,255,0.03)",
+                  color: "var(--ink-0)",
+                  fontFamily: "var(--sans)",
+                  fontSize: "14px",
+                  fontWeight: "bold",
+                  cursor: "pointer",
+                  transition: "background 0.2s, transform 0.1s"
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18">
+                  <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
+                  <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A9 9 0 0 0 9 18z" fill="#34A853"/>
+                  <path d="M3.964 10.707c-.18-.54-.282-1.117-.282-1.707 0-.59.102-1.167.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+                  <path d="M9 3.58c1.32 0 2.5.454 3.436 1.353l2.58-2.58C13.46 1.002 11.427 0 9 0A9 9 0 0 0 .957 4.961l3.007 2.332C4.672 5.164 6.656 3.58 9 3.58z" fill="#EA4335"/>
+                </svg>
+                <span>{mode === "signup" ? "Registrarse con Google" : "Iniciar sesión con Google"}</span>
+              </button>
+            </>
+          ) : null}
         </form>
       </section>
     </main>
@@ -2219,6 +2375,32 @@ export default function Home() {
     }
   };
 
+  const handleReset = async (args: { email: string }) => {
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      await signIn("password", { ...args, flow: "reset" });
+    } catch (err) {
+      setAuthError(cleanErrorMessage(err, "No se pudo enviar el código de recuperación"));
+      throw err;
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const handleVerifyReset = async (args: { email: string; code: string; newPassword: string }) => {
+    setAuthBusy(true);
+    setAuthError(null);
+    try {
+      await signIn("password", { ...args, flow: "reset-verification" });
+    } catch (err) {
+      setAuthError(cleanErrorMessage(err, "Código inválido o error al restablecer"));
+      throw err;
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
   if (authLoading) {
     return <main className="auth-shell"><EmptyState message="Cargando tu Mundial…" /></main>;
   }
@@ -2235,7 +2417,17 @@ export default function Home() {
   };
 
   if (!user) {
-    return <AuthScreen onSignup={handleSignup} onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} busy={authBusy} error={authError} />;
+    return (
+      <AuthScreen
+        onSignup={handleSignup}
+        onLogin={handleLogin}
+        onReset={handleReset}
+        onVerifyReset={handleVerifyReset}
+        onGoogleLogin={handleGoogleLogin}
+        busy={authBusy}
+        error={authError}
+      />
+    );
   }
 
   return (

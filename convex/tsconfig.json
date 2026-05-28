@@ -10,7 +10,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "jsx": "preserve",
-    "types": []
+    "types": ["node"]
   },
   "include": ["./**/*"],
   "exclude": ["./_generated"]

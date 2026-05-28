@@ -1,7 +1,26 @@
 import { convexAuth } from "@convex-dev/auth/server";
 import { Password } from "@convex-dev/auth/providers/Password";
 import Google from "@auth/core/providers/google";
+import { Email } from "@convex-dev/auth/providers/Email";
 import { Scrypt } from "lucia";
+
+declare const process: { env: Record<string, string | undefined> };
+
+const resetPasswordProvider = {
+  ...Email({
+    sendVerificationRequest: async ({ identifier, token }) => {
+      console.log(`\n==================================================`);
+      console.log(`CÓDIGO DE RECUPERACIÓN DE CONTRASEÑA`);
+      console.log(`Para: ${identifier}`);
+      console.log(`Código: ${token}`);
+      console.log(`==================================================\n`);
+    }
+  }),
+  id: "reset-password",
+  generateVerificationToken: async () => {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  },
+};
 
 async function sha256(input: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input));
@@ -22,6 +41,7 @@ async function verifyOldPassword(password: string, hashJson: string): Promise<bo
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [
     Password({
+      reset: resetPasswordProvider,
       crypto: {
         hashSecret: async (password: string) => {
           return await new Scrypt().hash(password);
@@ -42,15 +62,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Email inválido");
         if (name.length < 2) throw new Error("Elige tu nombre de guerra");
 
-        const profileData: {
-          email: string;
-          name: string;
-          handle: string;
-          avatar: string;
-          favoriteTeam?: string;
-          createdAt: number;
-          updatedAt: number;
-        } = {
+        const profileData: Record<string, any> = {
           email,
           name,
           handle,
@@ -63,7 +75,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           profileData.favoriteTeam = (params.favoriteTeam as string).trim();
         }
 
-        return profileData;
+        return profileData as any;
       },
     }),
     Google({
