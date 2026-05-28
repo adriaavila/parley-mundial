@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { calculatePredictionScore } from "../lib/scoring.js";
@@ -249,7 +249,7 @@ function useAuth() {
   const signupMutation = useMutation(api.users.signup);
   const loginMutation = useMutation(api.users.login);
   const logoutMutation = useMutation(api.users.logout);
-  const sendResetCodeMutation = useMutation(api.users.sendResetCode);
+  const sendResetCodeAction = useAction(api.users.sendResetCode);
   const resetPasswordWithCodeMutation = useMutation(api.users.resetPasswordWithCode);
   const profile = useQuery(api.users.me, sessionToken ? { sessionToken } : "skip") as AuthUser | null | undefined;
 
@@ -304,9 +304,9 @@ function useAuth() {
 
   const sendResetCode = useCallback(
     async (args: { email: string }) => {
-      await sendResetCodeMutation(args);
+      await sendResetCodeAction(args);
     },
-    [sendResetCodeMutation]
+    [sendResetCodeAction]
   );
 
   const resetPasswordWithCode = useCallback(

@@ -1,7 +1,8 @@
-import { mutation, query } from "./_generated/server";
+import { action, internalMutation, mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 const AVATARS = ["⚽", "🏆", "🔥", "⭐", "🇦🇷", "🇧🇷", "🇲🇽", "🇪🇸", "🇫🇷", "🇺🇾", "🇺🇸", "🇨🇴"];
 const SESSION_DAYS = 60;
@@ -273,7 +274,7 @@ export const get = query({
   },
 });
 
-export const sendResetCode = mutation({
+export const generateAndStoreResetCode = internalMutation({
   args: { email: v.string() },
   handler: async (ctx, { email }) => {
     const user = await ctx.db
@@ -281,8 +282,7 @@ export const sendResetCode = mutation({
       .withIndex("by_email", (q) => q.eq("email", normalizeEmail(email)))
       .unique();
     if (!user) {
-      // Return true to avoid leaking if user exists
-      return true;
+      return null;
     }
 
     const code = Math.floor(100000 + Math.random() * 900000).toString();
@@ -293,11 +293,65 @@ export const sendResetCode = mutation({
       resetCodeExpires: expires,
     });
 
-    console.log(`\n==================================================`);
-    console.log(`CÓDIGO DE RECUPERACIÓN DE CONTRASEÑA`);
-    console.log(`Para: ${email}`);
-    console.log(`Código: ${code}`);
-    console.log(`==================================================\n`);
+    return { code, email: user.email };
+  },
+});
+
+export const sendResetCode = action({
+  args: { email: v.string() },
+  handler: async (ctx, { email }) => {
+    const result = await ctx.runMutation(internal.users.generateAndStoreResetCode, { email });
+    if (!result) {
+      // Return true to avoid leaking user presence
+      return true;
+    }
+
+    const apiKey = process.env.RESEND_API_KEY;
+    if (!apiKey) {
+      console.warn("RESEND_API_KEY is not set. Fallback to console log.");
+      console.log(`\n==================================================`);
+      console.log(`CÓDIGO DE RECUPERACIÓN (FALLBACK - NO API KEY)`);
+      console.log(`Para: ${result.email}`);
+      console.log(`Código: ${result.code}`);
+      console.log(`==================================================\n`);
+      return true;
+    }
+
+    try {
+      const response = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          from: "Parlai Mundial <noreply@resend.dev>",
+          to: result.email,
+          subject: "Recuperación de contraseña - Parlai Mundial",
+          html: `
+            <div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #eee; border-radius: 8px;">
+              <h2 style="color: #005eb8;">Parlai Mundial 2026</h2>
+              <p>Hola,</p>
+              <p>Has solicitado restablecer tu contraseña para tu cuenta de Parlai Mundial.</p>
+              <p>Tu código de recuperación es:</p>
+              <div style="background-color: #f4f4f4; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 4px; border-radius: 4px; margin: 20px 0;">
+                ${result.code}
+              </div>
+              <p style="color: #666; font-size: 14px;">Este código expirará en 15 minutos. Si no solicitaste este cambio, puedes ignorar este correo de forma segura.</p>
+            </div>
+          `,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error("Failed to send email via Resend:", errorText);
+        throw new Error("No se pudo enviar el correo de recuperación.");
+      }
+    } catch (error) {
+      console.error("Error in sendResetCode action:", error);
+      throw new Error("Error al enviar el correo de recuperación. Por favor, inténtalo de nuevo.");
+    }
 
     return true;
   },
