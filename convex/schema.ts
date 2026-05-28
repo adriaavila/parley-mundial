@@ -1,7 +1,10 @@
 import { defineSchema, defineTable } from "convex/server";
+import { authTables } from "@convex-dev/auth/server";
 import { v } from "convex/values";
 
 export default defineSchema({
+  ...authTables,
+
   tournaments: defineTable({
     slug: v.string(),
     name: v.string(),
@@ -10,30 +13,29 @@ export default defineSchema({
     active: v.boolean(),
   }).index("by_slug", ["slug"]),
 
+  // Extend the default users table with custom fields
   users: defineTable({
-    anonId: v.optional(v.string()),
+    name: v.string(), // Required
+    image: v.optional(v.string()),
     email: v.optional(v.string()),
-    passwordHash: v.optional(v.string()),
-    passwordSalt: v.optional(v.string()),
-    name: v.string(),
-    handle: v.string(),
-    avatar: v.string(),
+    emailVerificationTime: v.optional(v.number()),
+    phone: v.optional(v.string()),
+    phoneVerificationTime: v.optional(v.number()),
+    isAnonymous: v.optional(v.boolean()),
+
+    // Custom fields for ParlAI
+    anonId: v.optional(v.string()),
+    handle: v.string(), // Required
+    avatar: v.string(), // Required
     favoriteTeam: v.optional(v.string()),
+    passwordHash: v.optional(v.string()), // Retain for legacy migration
+    passwordSalt: v.optional(v.string()), // Retain for legacy migration
     createdAt: v.optional(v.number()),
     updatedAt: v.optional(v.number()),
   })
     .index("by_anonId", ["anonId"])
     .index("by_email", ["email"])
     .index("by_handle", ["handle"]),
-
-  sessions: defineTable({
-    userId: v.id("users"),
-    tokenHash: v.string(),
-    createdAt: v.number(),
-    expiresAt: v.number(),
-  })
-    .index("by_tokenHash", ["tokenHash"])
-    .index("by_user", ["userId"]),
 
   leagues: defineTable({
     name: v.string(),

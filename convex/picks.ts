@@ -21,15 +21,14 @@ import { requireUser } from "./users";
 
 export const save = mutation({
   args: {
-    sessionToken: v.string(),
     leagueId: v.id("leagues"),
     fixtureId: v.string(),
     home: v.number(),
     away: v.number(),
     bonus: v.array(v.string()),
   },
-  handler: async (ctx, { sessionToken, leagueId, fixtureId, home, away, bonus }) => {
-    const user = await requireUser(ctx, sessionToken);
+  handler: async (ctx, { leagueId, fixtureId, home, away, bonus }) => {
+    const user = await requireUser(ctx);
     const userId = user._id;
     if (!VALID_FIXTURE.test(fixtureId)) throw new Error("Partido inválido");
     if (home < 0 || home > 20 || away < 0 || away > 20) throw new Error("Marcador inválido");

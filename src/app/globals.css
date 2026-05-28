@@ -2000,10 +2000,24 @@ button {
 }
 
 .form-error {
-  margin: 0;
-  color: var(--red);
-  font-family: var(--mono);
+  margin: 8px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: rgba(255, 77, 94, 0.08);
+  border: 1px solid rgba(255, 77, 94, 0.2);
+  color: #ff8093;
+  font-family: var(--body);
   font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.form-error::before {
+  content: "⚠️";
+  font-size: 14px;
 }
 
 .top-actions button:disabled,

@@ -1,10 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "convex/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
+import { useAuthActions } from "@convex-dev/auth/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { calculatePredictionScore } from "../lib/scoring.js";
+
+function cleanErrorMessage(err: unknown, fallback: string): string {
+  if (!err) return "";
+  const rawMessage = err instanceof Error ? err.message : String(err);
+  
+  // Extract first line of error message (strips server-side Convex trace if any)
+  let msg = rawMessage.split("\n")[0];
+  
+  // Remove common Convex and general error prefixes
+  msg = msg.replace(/^(Mutation failed|Query failed|Error|ConvexError|Uncaught Error):\s*/i, "");
+  
+  return msg || fallback;
+}
 
 type Screen = "inicio" | "partidos" | "tabla" | "liga" | "perfil";
 
@@ -245,62 +259,33 @@ function useCountdown(target: string) {
 }
 
 function useAuth() {
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
-  const signupMutation = useMutation(api.users.signup);
-  const loginMutation = useMutation(api.users.login);
-  const logoutMutation = useMutation(api.users.logout);
-  const profile = useQuery(api.users.me, sessionToken ? { sessionToken } : "skip") as AuthUser | null | undefined;
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      const urlParams = new URLSearchParams(window.location.search);
-      const token = urlParams.get("token");
-      const join = urlParams.get("join");
-      if (token) {
-        window.localStorage.setItem("parleyia:session", token);
-        const cleanUrl = join ? `/?join=${join}` : "/";
-        window.history.replaceState({}, document.title, cleanUrl);
-        setSessionToken(token);
-      } else {
-        setSessionToken(window.localStorage.getItem("parleyia:session"));
-      }
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  const persist = useCallback((token: string) => {
-    window.localStorage.setItem("parleyia:session", token);
-    setSessionToken(token);
-  }, []);
+  const { signIn, signOut } = useAuthActions();
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const profile = useQuery(api.users.me) as AuthUser | null | undefined;
 
   const signup = useCallback(
     async (args: { email: string; password: string; name: string; handle: string; avatar: string; favoriteTeam?: string }) => {
-      const result = await signupMutation(args);
-      persist(result.sessionToken);
+      await signIn("password", { ...args, flow: "signUp" });
       window.localStorage.removeItem("parleyia:onboarded");
-      return result;
     },
-    [persist, signupMutation]
+    [signIn]
   );
 
   const login = useCallback(
     async (args: { email: string; password: string }) => {
-      const result = await loginMutation(args);
-      persist(result.sessionToken);
-      return result;
+      await signIn("password", { ...args, flow: "signIn" });
     },
-    [loginMutation, persist]
+    [signIn]
   );
 
   const logout = useCallback(async () => {
-    const token = sessionToken;
-    window.localStorage.removeItem("parleyia:session");
     window.localStorage.removeItem("parleyia:activeLeague");
-    setSessionToken(null);
-    if (token) await logoutMutation({ sessionToken: token }).catch(() => undefined);
-  }, [logoutMutation, sessionToken]);
+    await signOut();
+  }, [signOut]);
 
-  return { sessionToken, user: profile ?? null, loading: Boolean(sessionToken && profile === undefined), signup, login, logout };
+  const sessionToken = "convex-auth";
+
+  return { sessionToken, user: profile ?? null, loading: isLoading || (isAuthenticated && profile === undefined), signup, login, logout, signIn };
 }
 
 function useActiveLeague(leagues: { _id: Id<"leagues"> }[] | undefined) {
@@ -634,7 +619,7 @@ function InlinePickRow({
       savedTimerRef.current = setTimeout(() => setState("idle"), 1400);
     } catch (err) {
       setState("error");
-      setErrorMsg(err instanceof Error ? err.message : "Error");
+      setErrorMsg(cleanErrorMessage(err, "Error"));
     }
   }, [fixture, pick, savePickFor]);
 
@@ -945,11 +930,13 @@ function generateMemorablePassword() {
 function AuthScreen({
   onSignup,
   onLogin,
+  onGoogleLogin,
   busy,
   error,
 }: {
   onSignup: (args: { email: string; password: string; name: string; handle: string; avatar: string; favoriteTeam?: string }) => void;
   onLogin: (args: { email: string; password: string }) => void;
+  onGoogleLogin: () => void;
   busy: boolean;
   error: string | null;
 }) {
@@ -1269,9 +1256,7 @@ function AuthScreen({
           <button
             type="button"
             className="google-btn glass"
-            onClick={() => {
-              window.location.href = `/api/auth/google?join=${inviteCode || ""}`;
-            }}
+            onClick={onGoogleLogin}
             style={{
               display: "flex",
               alignItems: "center",
@@ -1320,7 +1305,6 @@ function LeagueScreen({
   onLeave,
   onInvite,
   currentUser,
-  sessionToken,
 }: {
   leagueId: Id<"leagues"> | null;
   leagues: LeagueSummary[];
@@ -1328,7 +1312,6 @@ function LeagueScreen({
   onLeave: (id: Id<"leagues">) => void;
   onInvite: () => void;
   currentUser: AuthUser;
-  sessionToken: string;
 }) {
   const members = useQuery(api.leagues.members, leagueId ? { leagueId } : "skip");
   const recent = useQuery(api.picks.recentInLeague, leagueId ? { leagueId } : "skip");
@@ -1368,7 +1351,6 @@ function LeagueScreen({
             leagueName={activeLeagueName}
             currentUser={currentUser}
             memberCount={members?.length ?? 0}
-            sessionToken={sessionToken}
           />
 
           <div className="league-side-panels">
@@ -1415,13 +1397,11 @@ function LeagueChat({
   leagueName,
   currentUser,
   memberCount,
-  sessionToken,
 }: {
   leagueId: Id<"leagues">;
   leagueName: string;
   currentUser: AuthUser;
   memberCount: number;
-  sessionToken: string;
 }) {
   const messages = useQuery(api.chat.list, { leagueId, limit: 100 }) as
     | {
@@ -1450,10 +1430,10 @@ function LeagueChat({
     setSending(true);
     setError(null);
     try {
-      await sendMutation({ sessionToken, leagueId, text });
+      await sendMutation({ leagueId, text });
       setDraft("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo enviar");
+      setError(cleanErrorMessage(err, "No se pudo enviar"));
     } finally {
       setSending(false);
     }
@@ -1967,7 +1947,7 @@ export default function Home() {
   const [authError, setAuthError] = useState<string | null>(null);
   const [savingPick, setSavingPick] = useState(false);
 
-  const { sessionToken, user, loading: authLoading, signup, login, logout } = useAuth();
+  const { sessionToken, user, loading: authLoading, signup, login, logout, signIn } = useAuth();
   const userId = user?._id ?? null;
   const myLeagues = useQuery(api.leagues.listForUser, userId ? { userId } : "skip") as LeagueSummary[] | undefined;
   const { activeLeagueId, setActive } = useActiveLeague(myLeagues);
@@ -1988,6 +1968,18 @@ export default function Home() {
   const updateProfile = useMutation(api.users.updateProfile);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const errorParam = params.get("error");
+    if (errorParam) {
+      setAuthError(errorParam);
+      // Clean up the error query param from URL to keep it clean
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("error");
+      window.history.replaceState({}, "", newUrl.toString());
+    }
+  }, []);
+
+  useEffect(() => {
     if (!userId) return;
     const seen = window.localStorage.getItem("parleyia:onboarded");
     if (!seen && myLeagues && myLeagues.length === 0) {
@@ -2002,20 +1994,20 @@ export default function Home() {
   }, [userId, myLeagues]);
 
   useEffect(() => {
-    if (!userId || !sessionToken) return;
+    if (!userId) return;
     const code = new URLSearchParams(window.location.search).get("join");
     if (!code) return;
     const key = `parleyia:joined:${code.toUpperCase()}`;
     if (window.localStorage.getItem(key)) return;
     window.localStorage.setItem(key, "yes");
-    joinLeague({ sessionToken, code })
+    joinLeague({ code })
       .then((result) => {
         setActive(result.leagueId);
         setToast("Te uniste desde el link");
         setScreen("liga");
       })
-      .catch((err) => setToast(err instanceof Error ? err.message : "Link inválido"));
-  }, [joinLeague, sessionToken, setActive, userId]);
+      .catch((err) => setToast(cleanErrorMessage(err, "Link inválido")));
+  }, [joinLeague, setActive, userId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -2060,15 +2052,12 @@ export default function Home() {
 
   const savePickFor = useCallback(
     async (fixture: Fixture, pick: LocalPick) => {
-      if (!sessionToken || !activeLeagueId) {
-        if (!activeLeagueId) {
-          setToast("Crea o únete a una liga primero");
-          setShowOnboarding(true);
-        }
+      if (!activeLeagueId) {
+        setToast("Crea o únete a una liga primero");
+        setShowOnboarding(true);
         throw new Error("Sin liga activa");
       }
       await savePickMutation({
-        sessionToken,
         leagueId: activeLeagueId,
         fixtureId: fixture.id,
         home: pick.home,
@@ -2076,7 +2065,7 @@ export default function Home() {
         bonus: pick.bonus,
       });
     },
-    [activeLeagueId, savePickMutation, sessionToken]
+    [activeLeagueId, savePickMutation]
   );
 
   const savePickFromModal = async (pick: LocalPick) => {
@@ -2087,7 +2076,7 @@ export default function Home() {
       setToast("Jugada guardada");
       setSelected(null);
     } catch (err) {
-      setToast(err instanceof Error ? err.message : "Error guardando");
+      setToast(cleanErrorMessage(err, "Error guardando"));
     } finally {
       setSavingPick(false);
     }
@@ -2100,34 +2089,32 @@ export default function Home() {
   };
 
   const handleCreate = async (name: string) => {
-    if (!sessionToken) return;
     setOnboardingError(null);
     setOnboardingBusy(true);
     try {
-      const result = await createLeague({ sessionToken, name });
+      const result = await createLeague({ name });
       setActive(result.leagueId);
       setToast(`Liga creada · código ${result.code}`);
       closeOnboarding();
       setScreen("liga");
     } catch (err) {
-      setOnboardingError(err instanceof Error ? err.message : "Error creando liga");
+      setOnboardingError(cleanErrorMessage(err, "Error creando liga"));
     } finally {
       setOnboardingBusy(false);
     }
   };
 
   const handleJoin = async (code: string) => {
-    if (!sessionToken) return;
     setOnboardingError(null);
     setOnboardingBusy(true);
     try {
-      const result = await joinLeague({ sessionToken, code });
+      const result = await joinLeague({ code });
       setActive(result.leagueId);
       setToast(`Te uniste a la liga`);
       closeOnboarding();
       setScreen("liga");
     } catch (err) {
-      setOnboardingError(err instanceof Error ? err.message : "Código inválido");
+      setOnboardingError(cleanErrorMessage(err, "Código inválido"));
     } finally {
       setOnboardingBusy(false);
     }
@@ -2159,18 +2146,16 @@ export default function Home() {
 
 
   const handleUpdateProfile = async (profile: { name: string; handle: string; avatar: string; favoriteTeam?: string }) => {
-    if (!sessionToken) return;
-    await updateProfile({ sessionToken, ...profile });
+    await updateProfile(profile);
     setToast("Perfil actualizado");
   };
 
   const handleLeave = async (leagueId: Id<"leagues">) => {
-    if (!sessionToken) return;
     try {
-      await leaveLeague({ sessionToken, leagueId });
+      await leaveLeague({ leagueId });
       setToast("Saliste de la liga");
     } catch (err) {
-      setToast(err instanceof Error ? err.message : "No se pudo salir");
+      setToast(cleanErrorMessage(err, "No se pudo salir"));
     }
   };
 
@@ -2216,7 +2201,7 @@ export default function Home() {
         window.localStorage.setItem("parleyia:onboarded", "yes");
       }
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "No se pudo crear la cuenta");
+      setAuthError(cleanErrorMessage(err, "No se pudo crear la cuenta"));
     } finally {
       setAuthBusy(false);
     }
@@ -2228,7 +2213,7 @@ export default function Home() {
     try {
       await login(args);
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "No se pudo entrar");
+      setAuthError(cleanErrorMessage(err, "No se pudo entrar"));
     } finally {
       setAuthBusy(false);
     }
@@ -2238,8 +2223,19 @@ export default function Home() {
     return <main className="auth-shell"><EmptyState message="Cargando tu Mundial…" /></main>;
   }
 
+  const handleGoogleLogin = () => {
+    setAuthBusy(true);
+    setAuthError(null);
+    const code = new URLSearchParams(window.location.search).get("join") || "";
+    signIn("google", { redirectTo: `/?join=${code}` })
+      .catch((err) => {
+        setAuthError(cleanErrorMessage(err, "Error al iniciar sesión con Google"));
+        setAuthBusy(false);
+      });
+  };
+
   if (!user) {
-    return <AuthScreen onSignup={handleSignup} onLogin={handleLogin} busy={authBusy} error={authError} />;
+    return <AuthScreen onSignup={handleSignup} onLogin={handleLogin} onGoogleLogin={handleGoogleLogin} busy={authBusy} error={authError} />;
   }
 
   return (
@@ -2268,7 +2264,7 @@ export default function Home() {
           <MatchesScreen picks={picks} savePickFor={savePickFor} openPick={openPick} />
         )}
         {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} />}
-        {screen === "liga" && sessionToken && (
+        {screen === "liga" && (
           <LeagueScreen
             leagueId={activeLeagueId}
             leagues={leagues}
@@ -2276,7 +2272,6 @@ export default function Home() {
             onLeave={handleLeave}
             onInvite={handleInvite}
             currentUser={user}
-            sessionToken={sessionToken}
           />
         )}
         {screen === "perfil" && (
