@@ -60,12 +60,14 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
 
         // Custom registration validation
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error("Email inválido");
-        if (name.length < 2) throw new Error("Elige tu nombre de guerra");
+        if (params.flow === "signUp") {
+          if (name.length < 2) throw new Error("Elige tu nombre de guerra");
+        }
 
         const profileData: Record<string, any> = {
           email,
-          name,
-          handle,
+          name: name || "Mundialero",
+          handle: handle || "mundialero",
           avatar: (params.avatar as string || "⚽").trim(),
           createdAt: Date.now(),
           updatedAt: Date.now(),
