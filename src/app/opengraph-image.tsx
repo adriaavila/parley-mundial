@@ -64,7 +64,7 @@ export default function OpengraphImage() {
             left: 0,
             width: "100%",
             height: "100%",
-            background: "linear-gradient(to bottom, rgba(8, 9, 11, 0.35) 0%, rgba(8, 9, 11, 0.9) 100%)",
+            background: "linear-gradient(to bottom, rgba(8, 9, 11, 0.72) 0%, rgba(8, 9, 11, 0.96) 100%)",
           }}
         />
 
