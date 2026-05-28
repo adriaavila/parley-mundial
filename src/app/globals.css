@@ -1487,6 +1487,32 @@ button {
   font-weight: 900;
 }
 
+.chat-composer button.active {
+  background: var(--lime);
+  color: #0a0a0a;
+}
+
+.chat-emoji-panel {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 12px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chat-emoji-panel button {
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 22px;
+  line-height: 1;
+  padding: 6px 8px;
+}
+
+.chat-emoji-panel button:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+
 .chat-composer input {
   min-width: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);

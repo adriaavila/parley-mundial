@@ -244,6 +244,16 @@ function useCountdown(target: string) {
   };
 }
 
+function cleanAuthError(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  const match = err.message.match(/Uncaught Error:\s*(.*?)(?:\s+at\s|\n|$)/);
+  const msg = (match?.[1] ?? err.message).trim();
+  if (!msg || /\[(CONVEX|Request ID)/i.test(msg) || /Server Error/i.test(msg)) {
+    return fallback;
+  }
+  return msg;
+}
+
 function useAuth() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const signupMutation = useMutation(api.users.signup);
@@ -1562,7 +1572,24 @@ function LeagueChat({
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const feedRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const insertEmoji = (emoji: string) => {
+    const input = inputRef.current;
+    const start = input?.selectionStart ?? draft.length;
+    const end = input?.selectionEnd ?? draft.length;
+    const next = (draft.slice(0, start) + emoji + draft.slice(end)).slice(0, 500);
+    setDraft(next);
+    setEmojiOpen(false);
+    requestAnimationFrame(() => {
+      if (!input) return;
+      input.focus();
+      const caret = Math.min(start + emoji.length, next.length);
+      input.setSelectionRange(caret, caret);
+    });
+  };
 
   useEffect(() => {
     if (!feedRef.current) return;
@@ -1623,6 +1650,20 @@ function LeagueChat({
         )}
       </div>
       {error ? <p className="form-error" style={{ padding: "0 12px" }}>{error}</p> : null}
+      {emojiOpen ? (
+        <div className="chat-emoji-panel" role="menu">
+          {["⚽", "🔥", "😂", "😮", "😢", "👏", "🎉", "💪", "🥅", "🟨", "🟥", "🏆"].map((emoji) => (
+            <button
+              type="button"
+              key={emoji}
+              aria-label={`Insertar ${emoji}`}
+              onClick={() => insertEmoji(emoji)}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <form
         className="chat-composer"
         onSubmit={(event) => {
@@ -1630,8 +1671,17 @@ function LeagueChat({
           void send();
         }}
       >
-        <button type="button" aria-label="Adjuntar" disabled>＋</button>
+        <button
+          type="button"
+          aria-label="Emojis"
+          aria-expanded={emojiOpen}
+          className={emojiOpen ? "active" : ""}
+          onClick={() => setEmojiOpen((open) => !open)}
+        >
+          ＋
+        </button>
         <input
+          ref={inputRef}
           value={draft}
           maxLength={500}
           onChange={(event) => setDraft(event.target.value)}
@@ -2341,7 +2391,7 @@ export default function Home() {
         window.localStorage.setItem("parleyia:onboarded", "yes");
       }
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "No se pudo crear la cuenta");
+      setAuthError(cleanAuthError(err, "No se pudo crear la cuenta"));
     } finally {
       setAuthBusy(false);
     }
@@ -2353,7 +2403,7 @@ export default function Home() {
     try {
       await login(args);
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "No se pudo entrar");
+      setAuthError(cleanAuthError(err, "No se pudo entrar"));
     } finally {
       setAuthBusy(false);
     }
@@ -2366,7 +2416,7 @@ export default function Home() {
       await sendResetCode(args);
       setToast("Código enviado. Búscalo en la consola de tu terminal.");
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "Error al enviar código");
+      setAuthError(cleanAuthError(err, "Error al enviar código"));
       throw err;
     } finally {
       setAuthBusy(false);
@@ -2380,7 +2430,7 @@ export default function Home() {
       await resetPasswordWithCode(args);
       setToast("Contraseña restablecida correctamente");
     } catch (err) {
-      setAuthError(err instanceof Error ? err.message : "Error al restablecer contraseña");
+      setAuthError(cleanAuthError(err, "Error al restablecer contraseña"));
       throw err;
     } finally {
       setAuthBusy(false);
