@@ -75,4 +75,13 @@ export default defineSchema({
   })
     .index("by_league", ["leagueId"])
     .index("by_league_created", ["leagueId", "createdAt"]),
+
+  // Final match scores, kept in the DB (not a code constant) so leaderboards
+  // and streaks recompute reactively the moment a result lands.
+  results: defineTable({
+    fixtureId: v.string(),
+    home: v.number(),
+    away: v.number(),
+    updatedAt: v.number(),
+  }).index("by_fixture", ["fixtureId"]),
 });

@@ -254,6 +254,32 @@ function cleanAuthError(err: unknown, fallback: string): string {
   return msg;
 }
 
+let tickCtx: AudioContext | null = null;
+function playTick() {
+  if (typeof window === "undefined") return;
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  try {
+    const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    tickCtx ??= new Ctx();
+    if (tickCtx.state === "suspended") void tickCtx.resume();
+    const now = tickCtx.currentTime;
+    const osc = tickCtx.createOscillator();
+    const gain = tickCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(1320, now + 0.05);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.045, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
+    osc.connect(gain).connect(tickCtx.destination);
+    osc.start(now);
+    osc.stop(now + 0.18);
+  } catch {
+    // audio is a non-critical enhancement
+  }
+}
+
 function useAuth() {
   const [sessionToken, setSessionToken] = useState<string | null>(null);
   const signupMutation = useMutation(api.users.signup);
@@ -624,6 +650,10 @@ function InlinePickRow({
   const locked = isFixtureLocked(fixture);
   const status = fixtureStatus(fixture);
 
+  const allResults = useQuery(api.results.list) as { fixtureId: string; home: number; away: number }[] | undefined;
+  const result = allResults?.find((row) => row.fixtureId === fixture.id);
+  const myScore = result && pick ? calculatePredictionScore({ home: pick.home, away: pick.away }, result) : null;
+
   const [draft, setDraft] = useState<{ home: number; away: number } | null>(
     pick ? { home: pick.home, away: pick.away } : null
   );
@@ -665,6 +695,7 @@ function InlinePickRow({
       await savePickFor(fixture, { home: next.home, away: next.away, bonus: pick?.bonus ?? [] });
       setLastSavedKey(`${next.home}-${next.away}`);
       setState("saved");
+      playTick();
       if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
       savedTimerRef.current = setTimeout(() => setState("idle"), 1400);
     } catch (err) {
@@ -723,6 +754,20 @@ function InlinePickRow({
         </div>
         <span className={`pick-status pick-status-${state} ${dirty && state === "idle" ? "pick-status-dirty" : ""} ${!draft ? "pick-status-empty" : ""}`}>{locked ? "Cerrado" : statusBadge}</span>
       </header>
+
+      {result ? (
+        <div className="pick-result">
+          <span className="pick-result-final">Final {result.home}–{result.away}</span>
+          {myScore ? (
+            <span className={`pick-result-points ${myScore.points > 0 ? "hit" : "miss"}`}>
+              {myScore.points > 0 ? `+${myScore.points} pts` : "0 pts"}
+              {myScore.exact ? " · exacto" : myScore.correctResult ? " · resultado" : ""}
+            </span>
+          ) : (
+            <span className="pick-result-points">Sin jugada</span>
+          )}
+        </div>
+      ) : null}
 
       <div className="pick-row-body">
         <button
@@ -955,10 +1000,11 @@ function LeaderboardCard({
   );
 }
 
-function EmptyState({ message }: { message: string }) {
+function EmptyState({ message, glyph = "⚽" }: { message: string; glyph?: string }) {
   return (
-    <div className="glass" style={{ padding: "28px", textAlign: "center", color: "var(--ink-2)" }}>
-      {message}
+    <div className="empty-state">
+      <span className="glyph" aria-hidden>{glyph}</span>
+      <p>{message}</p>
     </div>
   );
 }
@@ -1733,7 +1779,7 @@ function drawShareCard({
 
   ctx.fillStyle = "#c6ff3d";
   ctx.font = "700 38px system-ui";
-  ctx.fillText("PARLEYIA", 120, 170);
+  ctx.fillText("PARLAI MUNDIAL", 120, 170);
   ctx.fillStyle = "#f7f8f4";
   ctx.font = "900 118px system-ui";
   wrapText(ctx, title, 120, 520, 830, 124);
@@ -1800,7 +1846,28 @@ function ProfileShareSection({
     .map((row: LeaderboardRow, index: number) => `#${index + 1} ${row.name} ${row.points} pts`)
     .join(" · ");
 
-  const share = async (kind: "invite" | "rank" | "top" | "perfect" | "rivalry") => {
+  const myPicks = useQuery(
+    api.picks.listForUserInLeague,
+    league && currentUserId ? { leagueId: league._id, userId: currentUserId } : "skip",
+  ) as { fixtureId: string; home: number; away: number }[] | undefined;
+  const allResults = useQuery(api.results.list) as { fixtureId: string; home: number; away: number }[] | undefined;
+  const bestHit = useMemo(() => {
+    if (!myPicks || !allResults) return null;
+    const byFixture = new Map(allResults.map((row) => [row.fixtureId, row]));
+    let best: { fixtureId: string; result: { home: number; away: number }; points: number; exact: boolean } | null = null;
+    for (const pick of myPicks) {
+      const result = byFixture.get(pick.fixtureId);
+      if (!result) continue;
+      const scored = calculatePredictionScore({ home: pick.home, away: pick.away }, result);
+      if (scored.points <= 0) continue;
+      if (!best || scored.points > best.points) {
+        best = { fixtureId: pick.fixtureId, result, points: scored.points, exact: scored.exact };
+      }
+    }
+    return best;
+  }, [myPicks, allResults]);
+
+  const share = async (kind: "invite" | "rank" | "top" | "perfect" | "rivalry" | "clavada") => {
     if (!league) return;
     const payload = {
       invite: {
@@ -1832,6 +1899,20 @@ function ProfileShareSection({
         detail: "Entra, predice y ven a discutir la tabla.",
         code: league.code,
       },
+      clavada: (() => {
+        if (!bestHit) {
+          return { title: "Aún sin clavadas.", subtitle: league.name, detail: "Cuando le atines a un marcador, presúmelo aquí." };
+        }
+        const fx = fixtures.find((fixture) => fixture.id === bestHit.fixtureId);
+        const matchup = fx
+          ? `${getTeam(fx.home).code} ${bestHit.result.home}–${bestHit.result.away} ${getTeam(fx.away).code}`
+          : `${bestHit.result.home}–${bestHit.result.away}`;
+        return {
+          title: bestHit.exact ? "Clavé el marcador." : "Le atiné al resultado.",
+          subtitle: matchup,
+          detail: `${bestHit.points} ${bestHit.points === 1 ? "punto" : "puntos"}${bestHit.exact ? " · marcador exacto" : ""} en ${league.name}.`,
+        };
+      })(),
     }[kind];
     const canvas = drawShareCard(payload);
     if (!canvas) return;
@@ -1869,6 +1950,9 @@ function ProfileShareSection({
           <button className="share-tile glass" onClick={() => share("rank")}><strong>Mi ranking</strong><span>{myRow ? `Vas #${myIndex + 1}` : "Aún sin ranking"}</span></button>
           <button className="share-tile glass" onClick={() => share("top")}><strong>Top 5</strong><span>La tabla no miente</span></button>
           <button className="share-tile glass" onClick={() => share("perfect")}><strong>Perfecta</strong><span>Mi jugada fue perfecta</span></button>
+          {bestHit ? (
+            <button className="share-tile glass" onClick={() => share("clavada")}><strong>Clavada</strong><span>{bestHit.exact ? "Marcador exacto" : `+${bestHit.points} pts`}</span></button>
+          ) : null}
           <button className="share-tile glass" onClick={() => share("rivalry")}><strong>Rivalidad</strong><span>Te falta fútbol</span></button>
         </div>
       )}
@@ -2259,6 +2343,7 @@ export default function Home() {
     setSavingPick(true);
     try {
       await savePickFor(selected, pick);
+      playTick();
       setToast("Jugada guardada");
       setSelected(null);
     } catch (err) {

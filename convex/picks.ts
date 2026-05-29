@@ -1,23 +1,24 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { MATCH_RESULTS, VALID_FIXTURE, fixtureStart, scorePick } from "./scoring";
+import { VALID_FIXTURE, fixtureStart, scorePick, type ResultMap } from "./scoring";
+import { loadResultsMap } from "./results";
+import { requireUser } from "./users";
 
 // Streak = consecutive most-recent finished matches where the user got the
 // result right (or better). Counts back from the latest finished pick.
-function computeStreak(picks: { fixtureId: string; home: number; away: number }[]) {
+function computeStreak(picks: { fixtureId: string; home: number; away: number }[], results: ResultMap) {
   const finished = picks
-    .filter((pick) => MATCH_RESULTS[pick.fixtureId])
+    .filter((pick) => results[pick.fixtureId])
     .sort((a, b) => fixtureStart(b.fixtureId) - fixtureStart(a.fixtureId));
   let streak = 0;
   for (const pick of finished) {
-    const scored = scorePick(pick, MATCH_RESULTS[pick.fixtureId]);
+    const scored = scorePick(pick, results[pick.fixtureId]);
     if (scored.correctResult || scored.exact) streak += 1;
     else break;
   }
   return streak;
 }
-import { requireUser } from "./users";
 
 export const save = mutation({
   args: {
@@ -118,6 +119,7 @@ export const recentInLeague = query({
 export const leagueLeaderboard = query({
   args: { leagueId: v.id("leagues") },
   handler: async (ctx, { leagueId }) => {
+    const results = await loadResultsMap(ctx);
     const memberships = await ctx.db
       .query("memberships")
       .withIndex("by_league", (q) => q.eq("leagueId", leagueId))
@@ -143,7 +145,7 @@ export const leagueLeaderboard = query({
         .withIndex("by_league_user", (q) => q.eq("leagueId", leagueId).eq("userId", m.userId))
         .collect();
 
-      const scored = picks.map((pick) => scorePick(pick, MATCH_RESULTS[pick.fixtureId]));
+      const scored = picks.map((pick) => scorePick(pick, results[pick.fixtureId]));
       const points = scored.reduce((sum, item) => sum + item.points, 0);
 
       rows.push({
@@ -154,7 +156,7 @@ export const leagueLeaderboard = query({
         picks: picks.length,
         exacts: scored.filter((item) => item.exact).length,
         correctResults: scored.filter((item) => item.correctResult).length,
-        streak: computeStreak(picks),
+        streak: computeStreak(picks, results),
         points,
       });
     }

@@ -21,8 +21,9 @@ export const FIXTURE_STARTS: string[] = [
   "2026-06-28T00:30:00Z", "2026-06-28T00:30:00Z", "2026-06-27T22:00:00Z", "2026-06-27T22:00:00Z",
 ];
 
-// Filled in as results come in. Keep here so league + global leaderboards use the same source.
-export const MATCH_RESULTS: Record<string, { home: number; away: number }> = {};
+// Match scores now live in the `results` DB table (see convex/results.ts).
+// Callers load a ResultMap per query so leaderboards recompute reactively.
+export type ResultMap = Record<string, { home: number; away: number }>;
 
 export const VALID_FIXTURE = /^m([1-9]|[1-6][0-9]|7[0-2])$/;
 

@@ -1,7 +1,8 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { MATCH_RESULTS, scorePick } from "./scoring";
+import { scorePick } from "./scoring";
+import { loadResultsMap } from "./results";
 import { requireUser } from "./users";
 
 const CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -111,6 +112,7 @@ export const joinByCode = mutation({
 export const listForUser = query({
   args: { userId: v.id("users") },
   handler: async (ctx, { userId }) => {
+    const results = await loadResultsMap(ctx);
     const memberships = await ctx.db
       .query("memberships")
       .withIndex("by_user", (q) => q.eq("userId", userId))
@@ -140,7 +142,7 @@ export const listForUser = query({
           .withIndex("by_league_user", (q) => q.eq("leagueId", league._id).eq("userId", member.userId))
           .collect();
         const points = picks.reduce(
-          (sum, pick) => sum + scorePick(pick, MATCH_RESULTS[pick.fixtureId]).points,
+          (sum, pick) => sum + scorePick(pick, results[pick.fixtureId]).points,
           0,
         );
         rows.push({ userId: member.userId, name: user.name, points, picks: picks.length });

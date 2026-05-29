@@ -1,15 +1,16 @@
 import { mutation, query } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { MATCH_RESULTS, fixtureStart, scorePick } from "./scoring";
+import { fixtureStart, scorePick, type ResultMap } from "./scoring";
+import { loadResultsMap } from "./results";
 
-function computeStreak(picks: { fixtureId: string; home: number; away: number }[]) {
+function computeStreak(picks: { fixtureId: string; home: number; away: number }[], results: ResultMap) {
   const finished = picks
-    .filter((pick) => MATCH_RESULTS[pick.fixtureId])
+    .filter((pick) => results[pick.fixtureId])
     .sort((a, b) => fixtureStart(b.fixtureId) - fixtureStart(a.fixtureId));
   let streak = 0;
   for (const pick of finished) {
-    const scored = scorePick(pick, MATCH_RESULTS[pick.fixtureId]);
+    const scored = scorePick(pick, results[pick.fixtureId]);
     if (scored.correctResult || scored.exact) streak += 1;
     else break;
   }
@@ -72,6 +73,7 @@ export const globalLeaderboard = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, { limit }) => {
     const max = Math.min(Math.max(limit ?? 100, 1), 500);
+    const results = await loadResultsMap(ctx);
     const picks = await ctx.db.query("picks").collect();
 
     const dedup = new Map<string, (typeof picks)[number]>();
@@ -92,7 +94,7 @@ export const globalLeaderboard = query({
       }
     >();
     for (const pick of dedup.values()) {
-      const scored = scorePick(pick, MATCH_RESULTS[pick.fixtureId]);
+      const scored = scorePick(pick, results[pick.fixtureId]);
       const key = String(pick.userId);
       const entry =
         byUser.get(key) ?? { points: 0, picks: 0, exacts: 0, correctResults: 0, userPicks: [] };
@@ -128,7 +130,7 @@ export const globalLeaderboard = query({
         handle: user.handle,
         avatar: user.avatar,
         favoriteTeam: user.favoriteTeam,
-        streak: computeStreak(userPicks),
+        streak: computeStreak(userPicks, results),
         ...rest,
       });
     }

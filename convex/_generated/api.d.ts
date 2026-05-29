@@ -9,8 +9,10 @@
  */
 
 import type * as chat from "../chat.js";
+import type * as crons from "../crons.js";
 import type * as leagues from "../leagues.js";
 import type * as picks from "../picks.js";
+import type * as results from "../results.js";
 import type * as scoring from "../scoring.js";
 import type * as tournaments from "../tournaments.js";
 import type * as users from "../users.js";
@@ -23,8 +25,10 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   chat: typeof chat;
+  crons: typeof crons;
   leagues: typeof leagues;
   picks: typeof picks;
+  results: typeof results;
   scoring: typeof scoring;
   tournaments: typeof tournaments;
   users: typeof users;
