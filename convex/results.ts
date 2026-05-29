@@ -105,6 +105,23 @@ function extractResults(json: unknown): NormalizedResult[] {
     }
     return out;
   }
+  if (json && typeof json === "object" && Array.isArray((json as { response?: unknown }).response)) {
+    const out: NormalizedResult[] = [];
+    for (const item of (json as { response: Record<string, any>[] }).response) {
+      const statusShort = item?.fixture?.status?.short;
+      const finished = ["FT", "AET", "PEN"].includes(statusShort);
+      if (!finished) continue;
+      const home = item?.goals?.home;
+      const away = item?.goals?.away;
+      if (typeof home !== "number" || typeof away !== "number") continue;
+      const date = item?.fixture?.date;
+      if (!date) continue;
+      const fixtureId = fixtureIdForKickoff(date);
+      if (!fixtureId) continue;
+      out.push({ fixtureId, home, away });
+    }
+    return out;
+  }
   if (json && typeof json === "object" && Array.isArray((json as { matches?: unknown }).matches)) {
     const out: NormalizedResult[] = [];
     for (const match of (json as { matches: Record<string, unknown>[] }).matches) {
@@ -120,12 +137,24 @@ function extractResults(json: unknown): NormalizedResult[] {
   return [];
 }
 
-// Cron-driven (see convex/crons.ts). No-ops cleanly until FOOTBALL_API_URL is
-// configured, so it is safe to schedule before the tournament / before a
-// provider is wired up.
+// Fetch results action. Orchestrates the rate-limited API calls and schedules
+// subsequent checks dynamically based on game schedules and current outcomes.
 export const fetchAndStore = internalAction({
   args: {},
   handler: async (ctx) => {
+    const { shouldFetch, nextCheckTime } = await ctx.runMutation(
+      internal.results.checkAndSchedule,
+      { now: Date.now() }
+    );
+
+    if (!shouldFetch) {
+      console.log(
+        "Fetch skipped (rate limit or already fetched recently). Next check scheduled at:",
+        nextCheckTime ? new Date(nextCheckTime).toISOString() : "none"
+      );
+      return { fetched: 0, updated: 0 };
+    }
+
     const url = process.env.FOOTBALL_API_URL;
     if (!url) {
       console.warn("FOOTBALL_API_URL not set — results auto-fetch is a no-op.");
@@ -134,9 +163,16 @@ export const fetchAndStore = internalAction({
     const apiKey = process.env.FOOTBALL_API_KEY;
     let json: unknown;
     try {
-      const response = await fetch(url, {
-        headers: apiKey ? { "X-Auth-Token": apiKey, Authorization: `Bearer ${apiKey}` } : {},
-      });
+      const headers: Record<string, string> = {};
+      if (apiKey) {
+        if (url.includes("api-sports.io") || url.includes("api-football")) {
+          headers["x-apisports-key"] = apiKey;
+        } else {
+          headers["X-Auth-Token"] = apiKey;
+          headers["Authorization"] = `Bearer ${apiKey}`;
+        }
+      }
+      const response = await fetch(url, { headers });
       if (!response.ok) {
         console.error(`Results fetch failed: ${response.status} ${await response.text()}`);
         return { fetched: 0, updated: 0 };
@@ -154,5 +190,71 @@ export const fetchAndStore = internalAction({
       if (changed) updated += 1;
     }
     return { fetched: results.length, updated };
+  },
+});
+
+// Helper mutation to rate-limit fetches and schedule the next check time dynamically.
+// This reduces the number of requests to API-Sports dramatically.
+export const checkAndSchedule = internalMutation({
+  args: { now: v.number() },
+  handler: async (ctx, { now }) => {
+    // 1. Get current active tournament to check/update lastFetchTime
+    const tournament = await ctx.db
+      .query("tournaments")
+      .withIndex("by_slug", (q) => q.eq("slug", "mundial-2026"))
+      .unique();
+
+    const lastFetch = tournament?.lastFetchTime ?? 0;
+    
+    // Rate limit: Skip fetch if we fetched in the last 5 minutes (300,000 ms)
+    const shouldFetch = now - lastFetch >= 5 * 60 * 1000;
+
+    if (shouldFetch && tournament) {
+      await ctx.db.patch(tournament._id, { lastFetchTime: now });
+    }
+
+    // 2. Compute the next check time
+    const results = await ctx.db.query("results").collect();
+    const finishedFixtureIds = new Set(results.map((r) => r.fixtureId));
+
+    let inProgressOrRecentCount = 0;
+    let nextKickoff: number | null = null;
+
+    for (let i = 0; i < FIXTURE_STARTS.length; i++) {
+      const fixtureId = `m${i + 1}`;
+      if (finishedFixtureIds.has(fixtureId)) {
+        continue;
+      }
+      const kickoff = Date.parse(FIXTURE_STARTS[i]);
+
+      // Active / live match (started but less than 4 hours ago)
+      if (now >= kickoff && now < kickoff + 4 * 60 * 60 * 1000) {
+        inProgressOrRecentCount++;
+      }
+
+      // Next kickoff in the future
+      if (kickoff > now) {
+        if (nextKickoff === null || kickoff < nextKickoff) {
+          nextKickoff = kickoff;
+        }
+      }
+    }
+
+    let nextCheckTime: number | null = null;
+    if (inProgressOrRecentCount > 0) {
+      // Check again in 15 minutes if there is an active match we don't have results for yet.
+      // This handles extra time, penalties, or match delays.
+      nextCheckTime = now + 15 * 60 * 1000;
+    } else if (nextKickoff !== null) {
+      // Schedule check for 1 hour and 50 minutes after the next kickoff
+      nextCheckTime = nextKickoff + 110 * 60 * 1000;
+    }
+
+    // 3. Schedule the next check if one is determined
+    if (nextCheckTime !== null) {
+      await ctx.scheduler.runAt(nextCheckTime, internal.results.fetchAndStore, {});
+    }
+
+    return { shouldFetch, nextCheckTime };
   },
 });

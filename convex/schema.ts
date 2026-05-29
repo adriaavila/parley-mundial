@@ -8,6 +8,7 @@ export default defineSchema({
     startsAt: v.number(),
     endsAt: v.number(),
     active: v.boolean(),
+    lastFetchTime: v.optional(v.number()),
   }).index("by_slug", ["slug"]),
 
   users: defineTable({
