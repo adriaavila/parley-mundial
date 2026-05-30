@@ -1,10 +1,13 @@
 const APP_URL = "https://parlai.frontia.app";
-const msg = (src: string) =>
-  `🏆 Te reto en ParlAI Mundial — la app de pronósticos del Mundial 2026. ¿Sabes más de fútbol que yo? Demuéstralo: ${APP_URL}/?src=${src}`;
+const PITCH =
+  "🏆 Te reto en ParlAI Mundial — la app de pronósticos del Mundial 2026. ¿Sabes más de fútbol que yo? Demuéstralo:";
+const link = (src: string) => `${APP_URL}/?src=${src}`;
 
 export function ShareButtons() {
-  const wa = `https://wa.me/?text=${encodeURIComponent(msg("wa"))}`;
-  const x = `https://twitter.com/intent/tweet?text=${encodeURIComponent(msg("x"))}`;
+  // WhatsApp: URL inline in the text body.
+  const wa = `https://wa.me/?text=${encodeURIComponent(`${PITCH} ${link("wa")}`)}`;
+  // X: text and url as separate params so X dedupes and builds the link card.
+  const x = `https://x.com/intent/tweet?text=${encodeURIComponent(PITCH)}&url=${encodeURIComponent(link("x"))}`;
   return (
     <div className="flex flex-wrap gap-3">
       <a
