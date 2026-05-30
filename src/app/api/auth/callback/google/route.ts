@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const inviteCode = state.join || "";
 
   if (!clientId || !clientSecret || !convexUrl) {
-    const homeUrl = new URL("/", request.url);
+    const homeUrl = new URL("/play", request.url);
     homeUrl.searchParams.set("error", "OAuth environment variables missing");
     if (inviteCode) {
       homeUrl.searchParams.set("join", inviteCode);
@@ -73,8 +73,8 @@ export async function GET(request: Request) {
       name: userInfo.name || userInfo.given_name || "Mundialero",
     });
 
-    // Redirect the browser back to the homepage, passing the session token and invite code
-    const responseUrl = new URL("/", request.url);
+    // Redirect the browser into the app, passing the session token and invite code
+    const responseUrl = new URL("/play", request.url);
     responseUrl.searchParams.set("token", result.sessionToken);
     if (inviteCode) {
       responseUrl.searchParams.set("join", inviteCode);

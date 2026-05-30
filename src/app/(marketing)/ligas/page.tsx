@@ -8,15 +8,15 @@ export const metadata: Metadata = {
   title: "Ligas privadas — ParlAI Mundial 2026",
   description:
     "Crea ligas privadas con tus amigos, tu oficina o tu familia. Invita por WhatsApp y compite por el ranking del Mundial 2026.",
-  alternates: { canonical: "/landing/ligas" },
+  alternates: { canonical: "/ligas" },
   openGraph: {
     title: "Ligas privadas — ParlAI Mundial",
     description: "Crea una liga, invita por WhatsApp, gana el Mundial entre amigos.",
-    url: "/landing/ligas",
+    url: "/ligas",
     type: "website",
     images: [
       {
-        url: "/landing/opengraph-image",
+        url: "/opengraph-image",
         width: 1200,
         height: 630,
         alt: "Ligas privadas — ParlAI Mundial",
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Ligas privadas — ParlAI Mundial",
     description: "Crea una liga, invita por WhatsApp, gana el Mundial entre amigos.",
-    images: ["/landing/opengraph-image"],
+    images: ["/opengraph-image"],
   },
 };
 
@@ -73,7 +73,7 @@ export default function Ligas() {
 
       <section className="py-20 px-6 text-center">
         <Link
-          href="/"
+          href="/play"
           className="inline-block bg-primary text-primary-foreground px-10 py-4 rounded-xl font-display text-2xl uppercase hover:scale-105 transition-transform"
         >
           Crear mi liga ahora

@@ -7,7 +7,7 @@ export async function GET(request: Request) {
 
   const clientId = process.env.GOOGLE_CLIENT_ID;
   if (!clientId) {
-    const homeUrl = new URL("/", request.url);
+    const homeUrl = new URL("/play", request.url);
     homeUrl.searchParams.set("error", "Google Client ID not configured en .env.local");
     if (join) {
       homeUrl.searchParams.set("join", join);

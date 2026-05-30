@@ -19,13 +19,7 @@ const jetBrainsMono = JetBrains_Mono({
   subsets: ["latin"],
 });
 
-const siteUrl =
-  process.env.NEXT_PUBLIC_SITE_URL ??
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL
-    ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-    : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
-      : "https://parlai-mundial.vercel.app");
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://parlai.frontia.app";
 
 const description =
   "Pronósticos del Mundial 2026 con tus amigos. Crea ligas privadas, invita por WhatsApp y demuestra quién sabe más de fútbol.";

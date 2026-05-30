@@ -26,8 +26,8 @@ export default function JoinClient({ code, initialLeague }: JoinClientProps) {
     // Check if session exists
     const session = window.localStorage.getItem("parleyia:session");
     if (session && code) {
-      // Redirect to main page where joining is handled automatically
-      router.push(`/?join=${code}`);
+      // Redirect to the app where joining is handled automatically
+      router.push(`/play?join=${code}`);
     }
   }, [code, router]);
 
@@ -80,7 +80,7 @@ export default function JoinClient({ code, initialLeague }: JoinClientProps) {
     );
   }
 
-  const joinUrl = `/?join=${code}`;
+  const joinUrl = `/play?join=${code}`;
 
   return (
     <main className="auth-shell">
@@ -117,7 +117,7 @@ export default function JoinClient({ code, initialLeague }: JoinClientProps) {
           </Link>
 
           <Link
-            href="/landing"
+            href="/"
             style={{
               fontFamily: "var(--mono)",
               color: "var(--ink-2)",

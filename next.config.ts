@@ -8,6 +8,15 @@ const nextConfig: NextConfig = {
   turbopack: {
     root: path.resolve(import.meta.dirname),
   },
+  async redirects() {
+    // Landing moved to root and the app moved to /play. Keep old shared links alive.
+    return [
+      { source: "/landing", destination: "/", permanent: true },
+      { source: "/landing/como-funciona", destination: "/como-funciona", permanent: true },
+      { source: "/landing/faq", destination: "/faq", permanent: true },
+      { source: "/landing/ligas", destination: "/ligas", permanent: true },
+    ];
+  },
 };
 
 export default nextConfig;

@@ -7,15 +7,15 @@ export const metadata: Metadata = {
   title: "Cómo funciona — ParlAI Mundial 2026",
   description:
     "Aprende cómo jugar ParlAI Mundial: el sistema de puntos, las ligas privadas y los pronósticos especiales del Mundial 2026.",
-  alternates: { canonical: "/landing/como-funciona" },
+  alternates: { canonical: "/como-funciona" },
   openGraph: {
     title: "Cómo funciona ParlAI Mundial",
     description: "Sistema de puntos, ligas privadas and pronósticos del Mundial 2026.",
-    url: "/landing/como-funciona",
+    url: "/como-funciona",
     type: "website",
     images: [
       {
-        url: "/landing/opengraph-image",
+        url: "/opengraph-image",
         width: 1200,
         height: 630,
         alt: "Cómo funciona ParlAI Mundial",
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Cómo funciona ParlAI Mundial",
     description: "Sistema de puntos, ligas privadas and pronósticos del Mundial 2026.",
-    images: ["/landing/opengraph-image"],
+    images: ["/opengraph-image"],
   },
 };
 
@@ -84,7 +84,7 @@ export default function ComoFunciona() {
             Listo. <span className="text-primary">A jugar.</span>
           </h2>
           <Link
-            href="/"
+            href="/play"
             className="inline-block bg-primary text-primary-foreground px-10 py-4 rounded-xl font-display text-2xl uppercase hover:scale-105 transition-transform"
           >
             Crear mi cuenta

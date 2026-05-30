@@ -3,9 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
-import { api } from "../../convex/_generated/api";
-import type { Id } from "../../convex/_generated/dataModel";
-import { calculatePredictionScore } from "../lib/scoring.js";
+import { api } from "../../../convex/_generated/api";
+import type { Id } from "../../../convex/_generated/dataModel";
+import { calculatePredictionScore } from "@/lib/scoring.js";
+
+// Canonical site URL — share links always point to the production domain,
+// even when shared from a preview deploy or *.vercel.app host.
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://parlai.frontia.app";
+const DOMAIN_LABEL = "parlai.frontia.app";
+const joinLink = (code: string, src?: string) =>
+  `${SITE_URL}/join/${code}${src ? `?src=${src}` : ""}`;
 
 type Screen = "inicio" | "partidos" | "tabla" | "liga" | "perfil";
 
@@ -297,7 +304,7 @@ function useAuth() {
       const join = urlParams.get("join");
       if (token) {
         window.localStorage.setItem("parleyia:session", token);
-        const cleanUrl = join ? `/?join=${join}` : "/";
+        const cleanUrl = join ? `/play?join=${join}` : "/play";
         window.history.replaceState({}, document.title, cleanUrl);
         setSessionToken(token);
       } else {
@@ -1106,7 +1113,7 @@ function AuthScreen({
           <h1>Bienvenido a la jugada mundialera.</h1>
           <p>Arma tu perfil antes del pitazo, crea una liga y empieza a pelear la tabla del Mundial.</p>
           <p style={{ marginTop: 14 }}>
-            <a href="/landing" style={{ color: "var(--lime)", fontFamily: "var(--mono)", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", textDecoration: "none" }}>
+            <a href="/" style={{ color: "var(--lime)", fontFamily: "var(--mono)", fontSize: 12, letterSpacing: "0.1em", textTransform: "uppercase", textDecoration: "none" }}>
               ¿Primera vez? Conoce cómo funciona →
             </a>
           </p>
@@ -1914,6 +1921,19 @@ function drawShareCard(payload: ShareCardPayload) {
   ctx.fillStyle = "#f7f8f4";
   ctx.font = "900 34px Space Grotesk, Inter, system-ui, sans-serif";
   ctx.fillText("La jugada mundialera", 116, 1708);
+
+  // Destination domain as an accent pill — viewers who screenshot the story
+  // still know where to go, even without a clickable link.
+  ctx.font = "900 30px JetBrains Mono, ui-monospace, monospace";
+  const domainText = DOMAIN_LABEL.toUpperCase();
+  const domainWidth = ctx.measureText(domainText).width;
+  const domainX = 964 - domainWidth;
+  ctx.fillStyle = accent;
+  roundRect(ctx, domainX - 24, 1678, domainWidth + 48, 48, 24);
+  ctx.fill();
+  ctx.fillStyle = "#08090b";
+  ctx.fillText(domainText, domainX, 1711);
+
   ctx.fillStyle = "rgba(247,248,244,.54)";
   ctx.font = "700 24px JetBrains Mono, ui-monospace, monospace";
   wrapText(ctx, "Crea tu liga, tira tus marcadores y presume la tabla.", 116, 1750, 782, 34, 2);
@@ -2101,7 +2121,7 @@ function ProfileShareSection({
 
   const sharePayload = (kind: ShareKind): ShareCardPayload | null => {
     if (!league) return null;
-    const shareUrl = `${window.location.origin}/join/${league.code}?src=story-${kind}`;
+    const shareUrl = joinLink(league.code, `story-${kind}`);
     const common = {
       accent: "#c6ff3d",
       shareUrl,
@@ -2739,7 +2759,7 @@ export default function Home() {
 
   const handleInvite = async () => {
     if (!activeLeague) return;
-    const link = `${window.location.origin}/join/${activeLeague.code}`;
+    const link = joinLink(activeLeague.code, "invite");
     const text = `🏆 Te reto a unirte a mi liga "${activeLeague.name}" en ParlAI Mundial. ¿Sabes más de fútbol que yo? Compite conmigo aquí:`;
     if (navigator.share) {
       try {

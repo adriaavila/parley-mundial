@@ -44,15 +44,15 @@ export const metadata: Metadata = {
   title: "Preguntas frecuentes — ParlAI Mundial 2026",
   description:
     "Todo lo que necesitas saber sobre ParlAI Mundial: cómo jugar, cómo crear ligas privadas, sistema de puntos y más.",
-  alternates: { canonical: "/landing/faq" },
+  alternates: { canonical: "/faq" },
   openGraph: {
     title: "Preguntas frecuentes — ParlAI",
     description: "Cómo jugar, ligas privadas, puntos y más.",
-    url: "/landing/faq",
+    url: "/faq",
     type: "website",
     images: [
       {
-        url: "/landing/opengraph-image",
+        url: "/opengraph-image",
         width: 1200,
         height: 630,
         alt: "Preguntas frecuentes — ParlAI",
@@ -63,7 +63,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Preguntas frecuentes — ParlAI",
     description: "Cómo jugar, ligas privadas, puntos y más.",
-    images: ["/landing/opengraph-image"],
+    images: ["/opengraph-image"],
   },
 };
 
@@ -97,7 +97,7 @@ export default function Faq() {
 
           <div className="mt-16 text-center">
             <Link
-              href="/"
+              href="/play"
               className="inline-block bg-primary text-primary-foreground px-10 py-4 rounded-xl font-display text-2xl uppercase hover:scale-105 transition-transform"
             >
               Empezar a jugar

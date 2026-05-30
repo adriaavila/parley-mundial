@@ -12,16 +12,16 @@ export const metadata: Metadata = {
   title: "ParlAI Mundial 2026 — Pronósticos del Mundial con tus amigos",
   description:
     "La app de pronósticos del Mundial 2026 más competitiva de LATAM. Crea ligas privadas, invita a tus amigos por WhatsApp y demuestra quién sabe más de fútbol.",
-  alternates: { canonical: "/landing" },
+  alternates: { canonical: "/" },
   openGraph: {
     title: "ParlAI Mundial 2026 — Domina el Pronóstico",
     description:
       "Crea ligas privadas, predice cada partido del Mundial y compite con tus amigos. Gratis.",
-    url: "/landing",
+    url: "/",
     type: "website",
     images: [
       {
-        url: "/landing/opengraph-image",
+        url: "/opengraph-image",
         width: 1200,
         height: 630,
         alt: "ParlAI Mundial 2026 — Domina el Pronóstico",
@@ -33,7 +33,7 @@ export const metadata: Metadata = {
     title: "ParlAI Mundial 2026 — Domina el Pronóstico",
     description:
       "Crea ligas privadas, predice cada partido del Mundial y compite con tus amigos. Gratis.",
-    images: ["/landing/opengraph-image"],
+    images: ["/opengraph-image"],
   },
 };
 
@@ -75,7 +75,7 @@ export default function LandingIndex() {
             </p>
             <div className="flex flex-wrap gap-4 items-center">
               <Link
-                href="/"
+                href="/play"
                 className="bg-primary text-primary-foreground px-8 py-4 rounded-xl font-display text-2xl uppercase tracking-tight hover:shadow-[0_0_30px_oklch(0.92_0.22_125/0.4)] transition-all duration-300"
               >
                 Empezar a predecir
@@ -169,7 +169,7 @@ export default function LandingIndex() {
                     Únete a mi liga en ParlAI y gánale a todos.
                   </p>
                   <p className="text-[#00A884] text-xs mt-2 font-mono">
-                    parlai-mundial.vercel.app
+                    parlai.frontia.app
                   </p>
                 </div>
               </div>
@@ -264,7 +264,7 @@ export default function LandingIndex() {
               hasta julio.
             </p>
             <Link
-              href="/"
+              href="/play"
               className="inline-block bg-background text-foreground px-12 py-5 rounded-2xl font-display text-2xl md:text-3xl uppercase hover:scale-105 transition-transform"
             >
               Jugar Gratis

@@ -1,9 +1,10 @@
-const APP_URL = "https://parlai-mundial.vercel.app/";
-const MSG = `🏆 Te reto en ParlAI Mundial — la app de pronósticos del Mundial 2026. ¿Sabes más de fútbol que yo? Demuéstralo: ${APP_URL}`;
+const APP_URL = "https://parlai.frontia.app";
+const msg = (src: string) =>
+  `🏆 Te reto en ParlAI Mundial — la app de pronósticos del Mundial 2026. ¿Sabes más de fútbol que yo? Demuéstralo: ${APP_URL}/?src=${src}`;
 
 export function ShareButtons() {
-  const wa = `https://wa.me/?text=${encodeURIComponent(MSG)}`;
-  const x = `https://twitter.com/intent/tweet?text=${encodeURIComponent(MSG)}`;
+  const wa = `https://wa.me/?text=${encodeURIComponent(msg("wa"))}`;
+  const x = `https://twitter.com/intent/tweet?text=${encodeURIComponent(msg("x"))}`;
   return (
     <div className="flex flex-wrap gap-3">
       <a
