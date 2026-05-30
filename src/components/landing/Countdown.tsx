@@ -16,6 +16,7 @@ function diff() {
 
 export function Countdown() {
   const [t, setT] = useState(diff);
+
   useEffect(() => {
     const i = setInterval(() => setT(diff()), 1000);
     return () => clearInterval(i);
@@ -34,6 +35,7 @@ export function Countdown() {
             className={`font-display text-5xl md:text-8xl tabular-nums ${
               u.accent ? "text-primary" : ""
             }`}
+            suppressHydrationWarning
           >
             {String(u.v).padStart(2, "0")}
           </span>
