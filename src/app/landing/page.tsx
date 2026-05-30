@@ -4,6 +4,7 @@ import { Nav } from "@/components/landing/Nav";
 import { Footer } from "@/components/landing/Footer";
 import { Countdown } from "@/components/landing/Countdown";
 import { ShareButtons } from "@/components/landing/ShareButtons";
+import { JoinAvatars } from "@/components/landing/JoinAvatars";
 
 const HERO = "/landing/hero-stadium.jpg";
 
@@ -79,14 +80,7 @@ export default function LandingIndex() {
               >
                 Empezar a predecir
               </Link>
-              <div className="flex -space-x-3 items-center">
-                <div className="size-10 rounded-full border-2 border-background bg-slate-800" />
-                <div className="size-10 rounded-full border-2 border-background bg-slate-700" />
-                <div className="size-10 rounded-full border-2 border-background bg-slate-600" />
-                <span className="pl-4 text-sm font-mono text-muted-foreground">
-                  Súmate ya
-                </span>
-              </div>
+              <JoinAvatars />
             </div>
           </div>
         </div>

@@ -213,6 +213,22 @@ export const me = query({
   },
 });
 
+export const recentPublicProfiles = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, args) => {
+    const limit = Math.min(Math.max(args.limit ?? 9, 1), 18);
+    const users = await ctx.db.query("users").order("desc").take(limit);
+
+    return users
+      .filter((user) => user.avatar.trim() && user.handle.trim())
+      .map((user) => ({
+        userId: user._id,
+        handle: user.handle,
+        avatar: user.avatar,
+      }));
+  },
+});
+
 export const updateProfile = mutation({
   args: {
     sessionToken: v.string(),

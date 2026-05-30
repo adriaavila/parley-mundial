@@ -2688,6 +2688,185 @@ button:active:not(:disabled) {
   animation: marquee 40s linear infinite;
 }
 
+.join-avatar-strip {
+  --join-avatar-size: 2.65rem;
+  --join-avatar-overlap: 0.72rem;
+  --join-avatar-step: calc(var(--join-avatar-size) - var(--join-avatar-overlap));
+  display: flex;
+  align-items: center;
+  gap: 0.95rem;
+  min-height: 3rem;
+  min-width: 0;
+}
+
+.join-avatar-stack {
+  width: calc((var(--join-avatar-size) * 3) - (var(--join-avatar-overlap) * 2));
+  flex-shrink: 0;
+  margin-block: -0.3rem;
+  overflow: hidden;
+  padding-block: 0.3rem;
+}
+
+.join-avatar-track {
+  display: flex;
+  align-items: center;
+  isolation: isolate;
+}
+
+.join-avatar-circle {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: var(--join-avatar-size);
+  height: var(--join-avatar-size);
+  margin-left: calc(var(--join-avatar-overlap) * -1);
+  border: 2px solid var(--background);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 28%, rgb(255 255 255 / 0.2), transparent 36%),
+    linear-gradient(145deg, var(--secondary), oklch(0.14 0.03 264));
+  box-shadow: 0 12px 28px rgb(0 0 0 / 0.28);
+  color: var(--foreground);
+  font-size: 1.23rem;
+  line-height: 1;
+  overflow: hidden;
+}
+
+.join-avatar-track .join-avatar-circle:first-child {
+  margin-left: 0;
+}
+
+.join-avatar-face {
+  grid-area: 1 / 1;
+  display: grid;
+  place-items: center;
+  transition:
+    opacity 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 560ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 560ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.join-avatar-face.current {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+}
+
+.join-avatar-face.next {
+  opacity: 0;
+  transform: translateX(0.55rem) scale(0.94);
+  filter: blur(2px);
+}
+
+.join-avatar-stack.is-swapping .join-avatar-face.current {
+  opacity: 0;
+  transform: translateX(-0.5rem) scale(0.94);
+  filter: blur(2px);
+}
+
+.join-avatar-stack.is-swapping .join-avatar-face.next {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  filter: blur(0);
+}
+
+.join-avatar-stack.is-settling .join-avatar-face {
+  transition: none;
+}
+
+.join-avatar-stack.is-settling .join-avatar-face.current {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  filter: blur(0);
+}
+
+.join-avatar-stack.is-settling .join-avatar-face.next {
+  opacity: 0;
+  transform: translateX(0) scale(1);
+  filter: blur(0);
+}
+
+.join-avatar-copy {
+  display: grid;
+  gap: 0.18rem;
+  width: 9.5rem;
+  min-width: 9.5rem;
+  font-family: var(--font-jetbrains-mono), 'JetBrains Mono', monospace;
+  line-height: 1.05;
+}
+
+.join-avatar-copy > span {
+  color: var(--muted-foreground);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.join-avatar-copy strong {
+  position: relative;
+  display: block;
+  width: 100%;
+  min-height: 0.9rem;
+  overflow: hidden;
+  color: var(--foreground);
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  transition:
+    opacity 260ms ease,
+    transform 260ms ease;
+  white-space: nowrap;
+}
+
+.join-handle-face {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition:
+    opacity 420ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 420ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.join-handle-face.next {
+  position: absolute;
+  inset: 0 auto auto 0;
+  opacity: 0;
+  transform: translateY(0.45rem);
+}
+
+.join-avatar-copy.is-swapping .join-handle-face.current {
+  opacity: 0;
+  transform: translateY(-0.35rem);
+}
+
+.join-avatar-copy.is-swapping .join-handle-face.next {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.join-avatar-copy.is-settling .join-handle-face {
+  transition: none;
+}
+
+.join-avatar-copy.is-settling .join-handle-face.current {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.join-avatar-copy.is-settling .join-handle-face.next {
+  opacity: 0;
+  transform: translateY(0);
+}
+
+@media (max-width: 520px) {
+  .join-avatar-strip {
+    flex-basis: 100%;
+    justify-content: center;
+  }
+}
+
 /* Custom Password Strength & Google Auth Styles */
 .google-btn:hover {
   background: rgba(255, 255, 255, 0.08) !important;
