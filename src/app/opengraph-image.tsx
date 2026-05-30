@@ -35,6 +35,7 @@ export default function OpengraphImage() {
       >
         {backgroundImage ? (
           <img
+            alt=""
             src={backgroundImage}
             style={{
               position: "absolute",

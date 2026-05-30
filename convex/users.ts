@@ -307,13 +307,16 @@ export const sendResetCode = action({
 
     const apiKey = process.env.RESEND_API_KEY;
     if (!apiKey) {
-      console.warn("RESEND_API_KEY is not set. Fallback to console log.");
-      console.log(`\n==================================================`);
-      console.log(`CÓDIGO DE RECUPERACIÓN (FALLBACK - NO API KEY)`);
-      console.log(`Para: ${result.email}`);
-      console.log(`Código: ${result.code}`);
-      console.log(`==================================================\n`);
-      return true;
+      if (process.env.ALLOW_RESET_CODE_LOGS === "true") {
+        console.warn("RESEND_API_KEY is not set. Logging reset code because ALLOW_RESET_CODE_LOGS=true.");
+        console.log(`\n==================================================`);
+        console.log(`CÓDIGO DE RECUPERACIÓN (DEV ONLY)`);
+        console.log(`Para: ${result.email}`);
+        console.log(`Código: ${result.code}`);
+        console.log(`==================================================\n`);
+        return true;
+      }
+      throw new Error("Servicio de recuperación no configurado.");
     }
 
     try {
@@ -392,13 +395,20 @@ export const resetPasswordWithCode = mutation({
   },
 });
 
-export const seedDevUser = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const email = "adrian.avilamolina@gmail.com";
-    const password = "5801100Tja";
-    
-    let user = await ctx.db
+export const seedDevUser = internalMutation({
+  args: {
+    email: v.optional(v.string()),
+    password: v.optional(v.string()),
+    aliasEmail: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const email = normalizeEmail(args.email ?? process.env.DEV_SEED_EMAIL ?? "");
+    const password = args.password ?? process.env.DEV_SEED_PASSWORD ?? "";
+    if (!email || !password) {
+      throw new Error("DEV_SEED_EMAIL and DEV_SEED_PASSWORD are required to seed a dev user");
+    }
+
+    const user = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", email))
       .unique();
@@ -408,8 +418,8 @@ export const seedDevUser = mutation({
     const now = Date.now();
 
     if (!user) {
-      const name = "adrian";
-      const handle = "adria";
+      const name = email.split("@")[0]?.slice(0, 40) || "mundialero";
+      const handle = normalizeHandle(name);
       await ctx.db.insert("users", {
         email,
         passwordSalt: salt,
@@ -430,26 +440,27 @@ export const seedDevUser = mutation({
       console.log(`Updated dev user: ${email}`);
     }
 
-    // Also update avilamolinaadrian@gmail.com if they have that account
-    const email2 = "avilamolinaadrian@gmail.com";
-    let user2 = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", email2))
-      .unique();
-    if (user2) {
-      await ctx.db.patch(user2._id, {
-        passwordSalt: salt,
-        passwordHash: hash,
-        updatedAt: now,
-      });
-      console.log(`Updated dev user: ${email2}`);
+    const aliasEmail = args.aliasEmail ? normalizeEmail(args.aliasEmail) : "";
+    if (aliasEmail) {
+      const aliasUser = await ctx.db
+        .query("users")
+        .withIndex("by_email", (q) => q.eq("email", aliasEmail))
+        .unique();
+      if (aliasUser) {
+        await ctx.db.patch(aliasUser._id, {
+          passwordSalt: salt,
+          passwordHash: hash,
+          updatedAt: now,
+        });
+        console.log(`Updated dev user: ${aliasEmail}`);
+      }
     }
 
     return true;
   },
 });
 
-export const deleteUserByEmail = mutation({
+export const deleteUserByEmail = internalMutation({
   args: { email: v.string() },
   handler: async (ctx, { email }) => {
     const user = await ctx.db
@@ -472,5 +483,3 @@ export const deleteUserByEmail = mutation({
     return false;
   },
 });
-
-

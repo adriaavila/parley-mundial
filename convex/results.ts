@@ -70,6 +70,16 @@ export const remove = internalMutation({
 });
 
 type NormalizedResult = { fixtureId: string; home: number; away: number };
+type ApiSportsResponseItem = {
+  fixture?: {
+    status?: { short?: unknown };
+    date?: unknown;
+  };
+  goals?: {
+    home?: unknown;
+    away?: unknown;
+  };
+};
 
 // Unique kickoff time -> fixtureId. Group-finale slots share a kickoff (4 at
 // once), so those are ambiguous by time alone and can't be auto-mapped from a
@@ -107,15 +117,15 @@ function extractResults(json: unknown): NormalizedResult[] {
   }
   if (json && typeof json === "object" && Array.isArray((json as { response?: unknown }).response)) {
     const out: NormalizedResult[] = [];
-    for (const item of (json as { response: Record<string, any>[] }).response) {
+    for (const item of (json as { response: ApiSportsResponseItem[] }).response) {
       const statusShort = item?.fixture?.status?.short;
-      const finished = ["FT", "AET", "PEN"].includes(statusShort);
+      const finished = typeof statusShort === "string" && ["FT", "AET", "PEN"].includes(statusShort);
       if (!finished) continue;
       const home = item?.goals?.home;
       const away = item?.goals?.away;
       if (typeof home !== "number" || typeof away !== "number") continue;
       const date = item?.fixture?.date;
-      if (!date) continue;
+      if (typeof date !== "string") continue;
       const fixtureId = fixtureIdForKickoff(date);
       if (!fixtureId) continue;
       out.push({ fixtureId, home, away });

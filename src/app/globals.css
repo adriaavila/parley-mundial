@@ -1047,12 +1047,87 @@ button:active:not(:disabled) {
 }
 
 .share-grid {
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(156px, 1fr));
 }
 
 .share-tile {
   display: grid;
   gap: 8px;
+  min-width: 0;
+}
+
+.share-tile:disabled {
+  cursor: wait;
+  opacity: 0.62;
+  transform: none;
+}
+
+.share-preview-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 240;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: rgba(5, 6, 8, 0.78);
+  backdrop-filter: blur(22px);
+}
+
+.share-preview {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(220px, 280px);
+  align-items: center;
+  gap: 18px;
+  width: min(720px, 100%);
+  padding: 18px;
+  border-radius: 28px;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.48);
+}
+
+.share-preview img {
+  display: block;
+  width: min(320px, 100%);
+  aspect-ratio: 9 / 16;
+  border-radius: 22px;
+  object-fit: cover;
+  box-shadow: 0 20px 52px rgba(0, 0, 0, 0.5);
+}
+
+.share-preview-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.share-preview-actions button,
+.share-preview-close {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ink-0);
+  font-family: var(--display);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.share-preview-actions button {
+  min-height: 46px;
+  padding: 0 18px;
+}
+
+.share-preview-actions button:first-child {
+  background: var(--lime);
+  color: #08090b;
+}
+
+.share-preview-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 38px;
+  height: 38px;
+  font-size: 24px;
+  line-height: 1;
 }
 
 .leaderboard-phone {
@@ -2443,6 +2518,27 @@ button:active:not(:disabled) {
 
   .leader-copy small {
     font-size: 14px;
+  }
+
+  .share-preview-backdrop {
+    align-items: start;
+    padding: 14px;
+    overflow: auto;
+  }
+
+  .share-preview {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 14px;
+    border-radius: 24px;
+  }
+
+  .share-preview img {
+    width: min(260px, 78vw);
+  }
+
+  .share-preview-actions {
+    width: 100%;
   }
 
   .leader-move {

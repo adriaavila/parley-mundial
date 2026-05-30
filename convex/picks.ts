@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { VALID_FIXTURE, fixtureStart, scorePick, type ResultMap } from "./scoring";
@@ -18,6 +18,30 @@ function computeStreak(picks: { fixtureId: string; home: number; away: number }[
     else break;
   }
   return streak;
+}
+
+async function requireLeagueMember(ctx: QueryCtx, sessionToken: string, leagueId: Id<"leagues">) {
+  const user = await requireUser(ctx, sessionToken);
+  const membership = await ctx.db
+    .query("memberships")
+    .withIndex("by_league_user", (q) => q.eq("leagueId", leagueId).eq("userId", user._id))
+    .unique();
+  if (!membership) throw new Error("No perteneces a la liga");
+  return user;
+}
+
+async function userIdFromLegacyClient(ctx: QueryCtx, id?: string): Promise<Id<"users"> | null> {
+  if (!id) return null;
+
+  const userId = ctx.db.normalizeId("users", id);
+  if (userId) return userId;
+
+  const sessionId = ctx.db.normalizeId("sessions", id);
+  if (!sessionId) return null;
+
+  const session = await ctx.db.get(sessionId);
+  if (!session || session.expiresAt < Date.now()) return null;
+  return session.userId;
 }
 
 export const save = mutation({
@@ -79,10 +103,16 @@ export const save = mutation({
 
 export const listForUserInLeague = query({
   args: {
+    sessionToken: v.optional(v.string()),
     leagueId: v.id("leagues"),
-    userId: v.id("users"),
+    userId: v.optional(v.string()),
   },
-  handler: async (ctx, { leagueId, userId }) => {
+  handler: async (ctx, { sessionToken, leagueId, userId: legacyUserId }) => {
+    // Temporary deploy bridge: old production bundles still call with userId.
+    const userId = sessionToken
+      ? (await requireLeagueMember(ctx, sessionToken, leagueId))._id
+      : await userIdFromLegacyClient(ctx, legacyUserId);
+    if (!userId) return [];
     return await ctx.db
       .query("picks")
       .withIndex("by_league_user", (q) => q.eq("leagueId", leagueId).eq("userId", userId))
@@ -91,8 +121,9 @@ export const listForUserInLeague = query({
 });
 
 export const recentInLeague = query({
-  args: { leagueId: v.id("leagues") },
-  handler: async (ctx, { leagueId }) => {
+  args: { sessionToken: v.optional(v.string()), leagueId: v.id("leagues") },
+  handler: async (ctx, { sessionToken, leagueId }) => {
+    if (sessionToken) await requireLeagueMember(ctx, sessionToken, leagueId);
     const picks = await ctx.db
       .query("picks")
       .withIndex("by_league_fixture", (q) => q.eq("leagueId", leagueId))
@@ -117,8 +148,9 @@ export const recentInLeague = query({
 });
 
 export const leagueLeaderboard = query({
-  args: { leagueId: v.id("leagues") },
-  handler: async (ctx, { leagueId }) => {
+  args: { sessionToken: v.optional(v.string()), leagueId: v.id("leagues") },
+  handler: async (ctx, { sessionToken, leagueId }) => {
+    if (sessionToken) await requireLeagueMember(ctx, sessionToken, leagueId);
     const results = await loadResultsMap(ctx);
     const memberships = await ctx.db
       .query("memberships")

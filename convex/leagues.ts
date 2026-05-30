@@ -1,4 +1,4 @@
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { scorePick } from "./scoring";
@@ -13,6 +13,30 @@ function generateCode() {
     out += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
   }
   return out;
+}
+
+async function requireLeagueMember(ctx: QueryCtx, sessionToken: string, leagueId: Id<"leagues">) {
+  const user = await requireUser(ctx, sessionToken);
+  const membership = await ctx.db
+    .query("memberships")
+    .withIndex("by_league_user", (q) => q.eq("leagueId", leagueId).eq("userId", user._id))
+    .unique();
+  if (!membership) throw new Error("No perteneces a esta liga");
+  return { user, membership };
+}
+
+async function userIdFromLegacyClient(ctx: QueryCtx, id?: string): Promise<Id<"users"> | null> {
+  if (!id) return null;
+
+  const userId = ctx.db.normalizeId("users", id);
+  if (userId) return userId;
+
+  const sessionId = ctx.db.normalizeId("sessions", id);
+  if (!sessionId) return null;
+
+  const session = await ctx.db.get(sessionId);
+  if (!session || session.expiresAt < Date.now()) return null;
+  return session.userId;
 }
 
 export const create = mutation({
@@ -110,8 +134,13 @@ export const joinByCode = mutation({
 });
 
 export const listForUser = query({
-  args: { userId: v.id("users") },
-  handler: async (ctx, { userId }) => {
+  args: { sessionToken: v.optional(v.string()), userId: v.optional(v.string()) },
+  handler: async (ctx, { sessionToken, userId: legacyUserId }) => {
+    // Temporary deploy bridge: old production bundles still call with userId.
+    const userId = sessionToken
+      ? (await requireUser(ctx, sessionToken))._id
+      : await userIdFromLegacyClient(ctx, legacyUserId);
+    if (!userId) return [];
     const results = await loadResultsMap(ctx);
     const memberships = await ctx.db
       .query("memberships")
@@ -184,15 +213,17 @@ export const leave = mutation({
 });
 
 export const get = query({
-  args: { leagueId: v.id("leagues") },
-  handler: async (ctx, { leagueId }) => {
+  args: { sessionToken: v.optional(v.string()), leagueId: v.id("leagues") },
+  handler: async (ctx, { sessionToken, leagueId }) => {
+    if (sessionToken) await requireLeagueMember(ctx, sessionToken, leagueId);
     return await ctx.db.get(leagueId);
   },
 });
 
 export const members = query({
-  args: { leagueId: v.id("leagues") },
-  handler: async (ctx, { leagueId }) => {
+  args: { sessionToken: v.optional(v.string()), leagueId: v.id("leagues") },
+  handler: async (ctx, { sessionToken, leagueId }) => {
+    if (sessionToken) await requireLeagueMember(ctx, sessionToken, leagueId);
     const memberships = await ctx.db
       .query("memberships")
       .withIndex("by_league", (q) => q.eq("leagueId", leagueId))
@@ -240,4 +271,3 @@ export const getByCode = query({
     };
   },
 });
-

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useAction, useMutation, useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -843,11 +844,22 @@ type BoardTab = "general" | "semana" | "exactos";
 type BoardScope = "liga" | "global";
 type GlobalRow = LeaderboardRow & { favoriteTeam?: string };
 
-function LeaderboardScreen({ leagueId, currentUserId }: { leagueId: Id<"leagues"> | null; currentUserId: Id<"users"> | null }) {
+function LeaderboardScreen({
+  leagueId,
+  currentUserId,
+  sessionToken,
+}: {
+  leagueId: Id<"leagues"> | null;
+  currentUserId: Id<"users"> | null;
+  sessionToken: string | null;
+}) {
   const [scope, setScope] = useState<BoardScope>("liga");
   const [tab, setTab] = useState<BoardTab>("general");
 
-  const leagueRows = useQuery(api.picks.leagueLeaderboard, leagueId && scope === "liga" ? { leagueId } : "skip");
+  const leagueRows = useQuery(
+    api.picks.leagueLeaderboard,
+    leagueId && sessionToken && scope === "liga" ? { leagueId, sessionToken } : "skip",
+  );
   const globalRows = useQuery(api.tournaments.globalLeaderboard, scope === "global" ? { limit: 100 } : "skip") as
     | GlobalRow[]
     | undefined;
@@ -1511,8 +1523,8 @@ function LeagueScreen({
   currentUser: AuthUser;
   sessionToken: string;
 }) {
-  const members = useQuery(api.leagues.members, leagueId ? { leagueId } : "skip");
-  const recent = useQuery(api.picks.recentInLeague, leagueId ? { leagueId } : "skip");
+  const members = useQuery(api.leagues.members, leagueId ? { leagueId, sessionToken } : "skip");
+  const recent = useQuery(api.picks.recentInLeague, leagueId ? { leagueId, sessionToken } : "skip");
   const activeLeagueName = leagues.find((league) => league._id === leagueId)?.name ?? "Liga";
 
   return (
@@ -1604,7 +1616,7 @@ function LeagueChat({
   memberCount: number;
   sessionToken: string;
 }) {
-  const messages = useQuery(api.chat.list, { leagueId, limit: 100 }) as
+  const messages = useQuery(api.chat.list, { leagueId, sessionToken, limit: 100 }) as
     | {
         _id: Id<"chatMessages">;
         userId: Id<"users">;
@@ -1740,63 +1752,171 @@ function LeagueChat({
   );
 }
 
-function drawShareCard({
-  title,
-  subtitle,
-  detail,
-  code,
-}: {
+type ShareKind = "invite" | "rank" | "top" | "perfect" | "rivalry" | "clavada";
+type ShareCardRow = {
+  rank: string;
+  name: string;
+  points: string;
+  avatar?: string;
+  highlight?: boolean;
+};
+type ShareCardPayload = {
+  kind: ShareKind;
   title: string;
   subtitle: string;
   detail: string;
+  badge: string;
+  accent: string;
   code?: string;
-}) {
+  stat?: { value: string; label: string; detail?: string };
+  rows?: ShareCardRow[];
+  shareText: string;
+  shareUrl: string;
+};
+type SharePreview = {
+  kind: ShareKind;
+  url: string;
+  file: File;
+  title: string;
+  shareText: string;
+  shareUrl: string;
+};
+
+function drawShareCard(payload: ShareCardPayload) {
   const canvas = document.createElement("canvas");
   canvas.width = 1080;
   canvas.height = 1920;
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
+
+  const accent = payload.accent;
   const gradient = ctx.createLinearGradient(0, 0, 1080, 1920);
-  gradient.addColorStop(0, "#08090b");
-  gradient.addColorStop(0.55, "#12161d");
-  gradient.addColorStop(1, "#07130d");
+  gradient.addColorStop(0, "#07130d");
+  gradient.addColorStop(0.46, "#10151c");
+  gradient.addColorStop(1, "#090a0d");
   ctx.fillStyle = gradient;
   ctx.fillRect(0, 0, 1080, 1920);
-  ctx.fillStyle = "rgba(198,255,61,.22)";
-  ctx.beginPath();
-  ctx.arc(170, 180, 260, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.fillStyle = "rgba(59,130,255,.18)";
-  ctx.beginPath();
-  ctx.arc(960, 1490, 360, 0, Math.PI * 2);
-  ctx.fill();
 
-  ctx.fillStyle = "rgba(255,255,255,.08)";
-  ctx.strokeStyle = "rgba(255,255,255,.18)";
-  roundRect(ctx, 90, 360, 900, 970, 42);
+  ctx.save();
+  ctx.globalAlpha = 0.2;
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = 3;
+  for (let x = -900; x < 1180; x += 128) {
+    ctx.beginPath();
+    ctx.moveTo(x, 70);
+    ctx.lineTo(x + 920, 1850);
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.save();
+  ctx.translate(740, 126);
+  ctx.rotate(-0.16);
+  ctx.fillStyle = accent;
+  roundRect(ctx, 0, 0, 420, 88, 24);
+  ctx.fill();
+  ctx.fillStyle = "#08090b";
+  ctx.font = "900 32px Space Grotesk, Inter, system-ui, sans-serif";
+  ctx.fillText("STORY 9:16", 34, 55);
+  ctx.restore();
+
+  ctx.fillStyle = "rgba(8, 9, 11, 0.74)";
+  ctx.strokeStyle = "rgba(255,255,255,.14)";
+  ctx.lineWidth = 2;
+  roundRect(ctx, 66, 90, 948, 1740, 44);
   ctx.fill();
   ctx.stroke();
 
-  ctx.fillStyle = "#c6ff3d";
-  ctx.font = "700 38px system-ui";
-  ctx.fillText("PARLAI MUNDIAL", 120, 170);
+  ctx.fillStyle = "rgba(255,255,255,.05)";
+  roundRect(ctx, 96, 118, 888, 1684, 34);
+  ctx.fill();
+
+  ctx.fillStyle = accent;
+  roundRect(ctx, 116, 142, 74, 74, 22);
+  ctx.fill();
+  ctx.fillStyle = "#08090b";
+  ctx.font = "900 42px Space Grotesk, Inter, system-ui, sans-serif";
+  ctx.fillText("P", 139, 193);
+
   ctx.fillStyle = "#f7f8f4";
-  ctx.font = "900 118px system-ui";
-  wrapText(ctx, title, 120, 520, 830, 124);
+  ctx.font = "900 36px Space Grotesk, Inter, system-ui, sans-serif";
+  ctx.fillText("PARLAI MUNDIAL", 212, 174);
+  ctx.fillStyle = "rgba(247,248,244,.56)";
+  ctx.font = "700 22px JetBrains Mono, ui-monospace, monospace";
+  ctx.fillText("MUNDIAL 2026", 214, 207);
+
+  ctx.fillStyle = "rgba(255,255,255,.11)";
+  roundRect(ctx, 116, 262, 310, 54, 27);
+  ctx.fill();
+  ctx.fillStyle = accent;
+  ctx.font = "900 22px JetBrains Mono, ui-monospace, monospace";
+  ctx.fillText(payload.badge.toUpperCase(), 142, 297);
+
+  ctx.fillStyle = "#f7f8f4";
+  ctx.font = "950 104px Space Grotesk, Inter, system-ui, sans-serif";
+  const titleY = wrapText(ctx, payload.title, 116, 438, 844, 108, 4);
+
   ctx.fillStyle = "#ffcc33";
-  ctx.font = "800 54px system-ui";
-  wrapText(ctx, subtitle, 120, 960, 820, 66);
-  ctx.fillStyle = "#c8cbc4";
-  ctx.font = "500 42px system-ui";
-  wrapText(ctx, detail, 120, 1130, 820, 58);
-  if (code) {
-    ctx.fillStyle = "#c6ff3d";
-    ctx.font = "900 92px ui-monospace, monospace";
-    ctx.fillText(code, 120, 1510);
+  ctx.font = "900 44px Space Grotesk, Inter, system-ui, sans-serif";
+  const subtitleY = wrapText(ctx, payload.subtitle, 116, Math.max(titleY + 28, 782), 818, 54, 2);
+
+  ctx.fillStyle = "rgba(247,248,244,.72)";
+  ctx.font = "600 35px Inter, system-ui, sans-serif";
+  const detailY = wrapText(ctx, payload.detail, 116, subtitleY + 38, 806, 48, 3);
+
+  if (payload.stat) {
+    const y = Math.max(detailY + 48, 1020);
+    ctx.fillStyle = "rgba(255,255,255,.10)";
+    ctx.strokeStyle = "rgba(255,255,255,.16)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, 116, y, 848, 250, 34);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.font = "950 138px Space Grotesk, Inter, system-ui, sans-serif";
+    ctx.fillText(payload.stat.value, 154, y + 150);
+    ctx.fillStyle = "#f7f8f4";
+    ctx.font = "900 38px Space Grotesk, Inter, system-ui, sans-serif";
+    wrapText(ctx, payload.stat.label, 470, y + 104, 440, 46, 2);
+    if (payload.stat.detail) {
+      ctx.fillStyle = "rgba(247,248,244,.54)";
+      ctx.font = "700 24px JetBrains Mono, ui-monospace, monospace";
+      wrapText(ctx, payload.stat.detail, 470, y + 196, 430, 34, 2);
+    }
   }
+
+  if (payload.rows?.length) {
+    drawShareRows(ctx, payload.rows, 116, Math.max(detailY + 44, 1030), 848, accent);
+  }
+
+  if (payload.code) {
+    const y = payload.rows?.length || payload.stat ? 1388 : Math.max(detailY + 80, 1130);
+    ctx.fillStyle = "#f7f8f4";
+    ctx.font = "900 30px JetBrains Mono, ui-monospace, monospace";
+    ctx.fillText("CODIGO DE LIGA", 116, y);
+    ctx.fillStyle = accent;
+    ctx.strokeStyle = "rgba(198,255,61,.28)";
+    ctx.lineWidth = 3;
+    roundRect(ctx, 116, y + 34, 848, 184, 34);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#08090b";
+    ctx.font = "950 94px JetBrains Mono, ui-monospace, monospace";
+    const code = payload.code.toUpperCase();
+    const codeWidth = ctx.measureText(code).width;
+    ctx.fillText(code, 116 + (848 - codeWidth) / 2, y + 150);
+  }
+
+  ctx.fillStyle = "rgba(247,248,244,.12)";
+  roundRect(ctx, 116, 1644, 848, 4, 2);
+  ctx.fill();
+
   ctx.fillStyle = "#f7f8f4";
-  ctx.font = "700 40px system-ui";
-  ctx.fillText("La jugada mundialera", 120, 1740);
+  ctx.font = "900 34px Space Grotesk, Inter, system-ui, sans-serif";
+  ctx.fillText("La jugada mundialera", 116, 1708);
+  ctx.fillStyle = "rgba(247,248,244,.54)";
+  ctx.font = "700 24px JetBrains Mono, ui-monospace, monospace";
+  wrapText(ctx, "Crea tu liga, tira tus marcadores y presume la tabla.", 116, 1750, 782, 34, 2);
   return canvas;
 }
 
@@ -1811,44 +1931,140 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: n
   ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
   ctx.lineTo(x, y + radius);
   ctx.quadraticCurveTo(x, y, x + radius, y);
+  ctx.closePath();
 }
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number) {
-  const words = text.split(" ");
+function ellipsizeText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  let clipped = text;
+  while (clipped.length > 1 && ctx.measureText(`${clipped}...`).width > maxWidth) {
+    clipped = clipped.slice(0, -1).trimEnd();
+  }
+  return `${clipped}...`;
+}
+
+function textLines(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number) {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
   let line = "";
   for (const word of words) {
     const test = line ? `${line} ${word}` : word;
     if (ctx.measureText(test).width > maxWidth && line) {
-      ctx.fillText(line, x, y);
+      lines.push(line);
       line = word;
-      y += lineHeight;
+      if (lines.length === maxLines) break;
     } else {
       line = test;
     }
   }
-  ctx.fillText(line, x, y);
+  if (line && lines.length < maxLines) lines.push(line);
+  if (words.length && lines.length === maxLines) {
+    const consumed = lines.join(" ").split(/\s+/).length;
+    if (consumed < words.length) lines[maxLines - 1] = ellipsizeText(ctx, lines[maxLines - 1], maxWidth);
+  }
+  return lines;
+}
+
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  maxWidth: number,
+  lineHeight: number,
+  maxLines = 3,
+) {
+  const lines = textLines(ctx, text, maxWidth, maxLines);
+  lines.forEach((line, index) => ctx.fillText(line, x, y + index * lineHeight));
+  return y + lines.length * lineHeight;
+}
+
+function drawShareRows(
+  ctx: CanvasRenderingContext2D,
+  rows: ShareCardRow[],
+  x: number,
+  y: number,
+  width: number,
+  accent: string,
+) {
+  rows.slice(0, 5).forEach((row, index) => {
+    const rowY = y + index * 104;
+    ctx.fillStyle = row.highlight ? "rgba(198,255,61,.16)" : "rgba(255,255,255,.08)";
+    ctx.strokeStyle = row.highlight ? "rgba(198,255,61,.36)" : "rgba(255,255,255,.12)";
+    ctx.lineWidth = 2;
+    roundRect(ctx, x, rowY, width, 84, 26);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = row.highlight ? accent : "rgba(247,248,244,.72)";
+    ctx.font = "900 30px JetBrains Mono, ui-monospace, monospace";
+    ctx.fillText(row.rank, x + 28, rowY + 53);
+
+    ctx.fillStyle = "rgba(255,255,255,.12)";
+    ctx.beginPath();
+    ctx.arc(x + 142, rowY + 42, 28, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#f7f8f4";
+    ctx.font = "800 28px Inter, system-ui, sans-serif";
+    ctx.fillText(row.avatar ?? row.name.slice(0, 1).toUpperCase(), x + 128, rowY + 52);
+
+    ctx.fillStyle = "#f7f8f4";
+    ctx.font = "850 31px Space Grotesk, Inter, system-ui, sans-serif";
+    const displayName = ellipsizeText(ctx, row.name, 420).replace("...", "");
+    ctx.fillText(displayName, x + 190, rowY + 52);
+
+    ctx.fillStyle = row.highlight ? accent : "#ffcc33";
+    ctx.font = "900 30px JetBrains Mono, ui-monospace, monospace";
+    const pointsWidth = ctx.measureText(row.points).width;
+    ctx.fillText(row.points, x + width - pointsWidth - 28, rowY + 52);
+  });
+}
+
+function canvasToFile(canvas: HTMLCanvasElement, fileName: string) {
+  return new Promise<File | null>((resolve) => {
+    canvas.toBlob((blob) => {
+      resolve(blob ? new File([blob], fileName, { type: "image/png" }) : null);
+    }, "image/png");
+  });
+}
+
+function downloadShareFile(url: string, fileName: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 function ProfileShareSection({
   league,
   currentUserId,
+  sessionToken,
   toast,
 }: {
   league: LeagueSummary | null;
   currentUserId: Id<"users"> | null;
+  sessionToken: string | null;
   toast: (message: string) => void;
 }) {
-  const rows = useQuery(api.picks.leagueLeaderboard, league ? { leagueId: league._id } : "skip");
+  const rows = useQuery(api.picks.leagueLeaderboard, league && sessionToken ? { leagueId: league._id, sessionToken } : "skip");
   const myIndex = rows?.findIndex((row: LeaderboardRow) => row.userId === currentUserId) ?? -1;
   const myRow = myIndex >= 0 ? (rows?.[myIndex] as LeaderboardRow) : null;
-  const topFive = rows
-    ?.slice(0, 5)
-    .map((row: LeaderboardRow, index: number) => `#${index + 1} ${row.name} ${row.points} pts`)
-    .join(" · ");
+  const topRows = useMemo(
+    () =>
+      (rows ?? []).slice(0, 5).map((row: LeaderboardRow, index: number) => ({
+        rank: `#${index + 1}`,
+        name: row.userId === currentUserId ? "Vos" : row.name,
+        points: `${row.points} pts`,
+        avatar: row.avatar,
+        highlight: row.userId === currentUserId,
+      })),
+    [currentUserId, rows],
+  );
 
   const myPicks = useQuery(
     api.picks.listForUserInLeague,
-    league && currentUserId ? { leagueId: league._id, userId: currentUserId } : "skip",
+    league && currentUserId && sessionToken ? { leagueId: league._id, sessionToken } : "skip",
   ) as { fixtureId: string; home: number; away: number }[] | undefined;
   const allResults = useQuery(api.results.list) as { fixtureId: string; home: number; away: number }[] | undefined;
   const bestHit = useMemo(() => {
@@ -1867,72 +2083,179 @@ function ProfileShareSection({
     return best;
   }, [myPicks, allResults]);
 
-  const share = async (kind: "invite" | "rank" | "top" | "perfect" | "rivalry" | "clavada") => {
-    if (!league) return;
-    const payload = {
+  const [preview, setPreview] = useState<SharePreview | null>(null);
+  const [preparing, setPreparing] = useState<ShareKind | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (preview) URL.revokeObjectURL(preview.url);
+    };
+  }, [preview]);
+
+  const closePreview = () => {
+    setPreview((current) => {
+      if (current) URL.revokeObjectURL(current.url);
+      return null;
+    });
+  };
+
+  const sharePayload = (kind: ShareKind): ShareCardPayload | null => {
+    if (!league) return null;
+    const shareUrl = `${window.location.origin}/join/${league.code}?src=story-${kind}`;
+    const common = {
+      accent: "#c6ff3d",
+      shareUrl,
+      shareText: `Únete a mi liga "${league.name}" en ParlAI Mundial: ${shareUrl}`,
+    };
+    const fx = bestHit ? fixtures.find((fixture) => fixture.id === bestHit.fixtureId) : null;
+    const matchup = bestHit
+      ? fx
+        ? `${getTeam(fx.home).code} ${bestHit.result.home}-${bestHit.result.away} ${getTeam(fx.away).code}`
+        : `${bestHit.result.home}-${bestHit.result.away}`
+      : "";
+
+    return {
       invite: {
+        ...common,
+        kind: "invite" as const,
+        badge: "invitacion",
         title: "Únete a mi liga.",
         subtitle: league.name,
-        detail: "Invita a tus panas antes del primer partido. Sin liga no hay pelea.",
+        detail: "Código listo para pegar en tu story. Sin liga no hay pelea.",
         code: league.code,
       },
       rank: {
+        ...common,
+        kind: "rank" as const,
+        badge: "ranking",
         title: myRow ? `Voy #${myIndex + 1} en mi liga mundialera.` : "La tabla no miente.",
         subtitle: league.name,
         detail: myRow
           ? `${myRow.points} puntos · ${myRow.exacts} exactos · ${myRow.correctResults} resultados`
           : "Haz tus jugadas y pelea el liderato.",
+        stat: myRow
+          ? {
+              value: `#${myIndex + 1}`,
+              label: "posición actual",
+              detail: `${myRow.picks} jugadas · racha ${myRow.streak}`,
+            }
+          : { value: "--", label: "sin ranking todavía", detail: "primer partido, primera oportunidad" },
       },
       top: {
+        ...common,
+        kind: "top" as const,
+        badge: "top 5",
         title: "Top 5 mundialero",
         subtitle: league.name,
-        detail: topFive || "Todavía no hay puntos, pero la previa ya empezó.",
+        detail: "La foto de la tabla para prender el grupo.",
+        rows: topRows.length
+          ? topRows
+          : [{ rank: "#1", name: "La previa", points: "0 pts", avatar: "P", highlight: true }],
       },
       perfect: {
-        title: "Mi jugada fue perfecta.",
-        subtitle: "8 puntos al bolsillo",
-        detail: "Marcador exacto, diferencia y goles clavados. Eso también se presume.",
+        ...common,
+        kind: "perfect" as const,
+        badge: "exacto",
+        title: "Clavé el marcador.",
+        subtitle: matchup || "8 puntos al bolsillo",
+        detail: `Marcador exacto en ${league.name}. Eso también se presume.`,
+        stat: { value: "8", label: "puntos de una", detail: "exacto + diferencia + goles" },
       },
       rivalry: {
+        ...common,
+        kind: "rivalry" as const,
+        badge: "rivalidad",
+        accent: "#ffcc33",
         title: "Te falta fútbol para alcanzarme.",
         subtitle: myRow ? `Voy #${myIndex + 1} en ${league.name}` : league.name,
         detail: "Entra, predice y ven a discutir la tabla.",
         code: league.code,
       },
-      clavada: (() => {
-        if (!bestHit) {
-          return { title: "Aún sin clavadas.", subtitle: league.name, detail: "Cuando le atines a un marcador, presúmelo aquí." };
-        }
-        const fx = fixtures.find((fixture) => fixture.id === bestHit.fixtureId);
-        const matchup = fx
-          ? `${getTeam(fx.home).code} ${bestHit.result.home}–${bestHit.result.away} ${getTeam(fx.away).code}`
-          : `${bestHit.result.home}–${bestHit.result.away}`;
-        return {
-          title: bestHit.exact ? "Clavé el marcador." : "Le atiné al resultado.",
-          subtitle: matchup,
-          detail: `${bestHit.points} ${bestHit.points === 1 ? "punto" : "puntos"}${bestHit.exact ? " · marcador exacto" : ""} en ${league.name}.`,
-        };
-      })(),
+      clavada: {
+        ...common,
+        kind: "clavada" as const,
+        badge: "clavada",
+        accent: "#3b82ff",
+        title: bestHit?.exact ? "Clavé el marcador." : "Le atiné al resultado.",
+        subtitle: matchup || league.name,
+        detail: bestHit
+          ? `${bestHit.points} ${bestHit.points === 1 ? "punto" : "puntos"} en ${league.name}.`
+          : "Cuando le atines a un marcador, presúmelo aquí.",
+        stat: bestHit
+          ? { value: `+${bestHit.points}`, label: bestHit.exact ? "marcador exacto" : "resultado correcto", detail: matchup }
+          : undefined,
+      },
     }[kind];
-    const canvas = drawShareCard(payload);
-    if (!canvas) return;
-    canvas.toBlob(async (blob) => {
-      if (!blob) return;
-      const file = new File([blob], `parlai-${kind}.png`, { type: "image/png" });
-      if (navigator.share && navigator.canShare?.({ files: [file] })) {
-        await navigator.share({ files: [file], title: "ParlAI Mundial 2026" }).catch(() => undefined);
-      } else {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = file.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+  };
+
+  const prepareShare = async (kind: ShareKind) => {
+    const payload = sharePayload(kind);
+    if (!payload) return;
+    setPreparing(kind);
+    try {
+      const canvas = drawShareCard(payload);
+      if (!canvas) return;
+      const file = await canvasToFile(canvas, `parlai-${kind}-${league?.code ?? "story"}.png`);
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      setPreview((current) => {
+        if (current) URL.revokeObjectURL(current.url);
+        return {
+          kind,
+          url,
+          file,
+          title: payload.title,
+          shareText: payload.shareText,
+          shareUrl: payload.shareUrl,
+        };
+      });
+    } finally {
+      setPreparing(null);
+    }
+  };
+
+  const sharePrepared = async () => {
+    if (!preview) return;
+    try {
+      if (navigator.share && navigator.canShare?.({ files: [preview.file] })) {
+        await navigator.share({
+          files: [preview.file],
+          title: "ParlAI Mundial 2026",
+          text: preview.shareText,
+        });
+        toast("Story abierta en compartir");
+        return;
       }
-      toast("Story lista");
-    }, "image/png");
+      downloadShareFile(preview.url, preview.file.name);
+      if (navigator.share) {
+        await navigator.share({
+          title: "ParlAI Mundial 2026",
+          text: preview.shareText,
+          url: preview.shareUrl,
+        }).catch(() => undefined);
+      }
+      toast("PNG descargada para story");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      downloadShareFile(preview.url, preview.file.name);
+      toast("PNG descargada para story");
+    }
+  };
+
+  const copyShareLink = async () => {
+    if (!preview) return;
+    try {
+      await navigator.clipboard.writeText(preview.shareUrl);
+      toast("Link copiado");
+    } catch {
+      toast(preview.shareUrl);
+    }
+  };
+
+  const downloadPrepared = () => {
+    if (!preview) return;
+    downloadShareFile(preview.url, preview.file.name);
+    toast("PNG descargada");
   };
 
   return (
@@ -1946,16 +2269,33 @@ function ProfileShareSection({
         <EmptyState message="Crea o únete a una liga para compartir." />
       ) : (
         <div className="share-grid">
-          <button className="share-tile glass" onClick={() => share("invite")}><strong>Invitación</strong><span>Únete a mi liga · {league.code}</span></button>
-          <button className="share-tile glass" onClick={() => share("rank")}><strong>Mi ranking</strong><span>{myRow ? `Vas #${myIndex + 1}` : "Aún sin ranking"}</span></button>
-          <button className="share-tile glass" onClick={() => share("top")}><strong>Top 5</strong><span>La tabla no miente</span></button>
-          <button className="share-tile glass" onClick={() => share("perfect")}><strong>Perfecta</strong><span>Mi jugada fue perfecta</span></button>
-          {bestHit ? (
-            <button className="share-tile glass" onClick={() => share("clavada")}><strong>Clavada</strong><span>{bestHit.exact ? "Marcador exacto" : `+${bestHit.points} pts`}</span></button>
+          <button className="share-tile glass" disabled={!!preparing} onClick={() => prepareShare("invite")}><strong>{preparing === "invite" ? "Armando..." : "Invitación"}</strong><span>Únete a mi liga · {league.code}</span></button>
+          <button className="share-tile glass" disabled={!!preparing} onClick={() => prepareShare("rank")}><strong>{preparing === "rank" ? "Armando..." : "Mi ranking"}</strong><span>{myRow ? `Vas #${myIndex + 1}` : "Aún sin ranking"}</span></button>
+          <button className="share-tile glass" disabled={!!preparing} onClick={() => prepareShare("top")}><strong>{preparing === "top" ? "Armando..." : "Top 5"}</strong><span>La tabla no miente</span></button>
+          {bestHit?.exact ? (
+            <button className="share-tile glass" disabled={!!preparing} onClick={() => prepareShare("perfect")}><strong>{preparing === "perfect" ? "Armando..." : "Perfecta"}</strong><span>Marcador exacto</span></button>
           ) : null}
-          <button className="share-tile glass" onClick={() => share("rivalry")}><strong>Rivalidad</strong><span>Te falta fútbol</span></button>
+          {bestHit ? (
+            <button className="share-tile glass" disabled={!!preparing} onClick={() => prepareShare("clavada")}><strong>{preparing === "clavada" ? "Armando..." : "Clavada"}</strong><span>{bestHit.exact ? "Marcador exacto" : `+${bestHit.points} pts`}</span></button>
+          ) : null}
+          <button className="share-tile glass" disabled={!!preparing} onClick={() => prepareShare("rivalry")}><strong>{preparing === "rivalry" ? "Armando..." : "Rivalidad"}</strong><span>Te falta fútbol</span></button>
         </div>
       )}
+      {preview ? createPortal(
+        <div className="share-preview-backdrop" role="dialog" aria-modal="true" aria-label="Vista previa de story">
+          <div className="share-preview glass-strong">
+            <button className="share-preview-close" type="button" aria-label="Cerrar vista previa" onClick={closePreview}>×</button>
+            {/* eslint-disable-next-line @next/next/no-img-element -- Blob previews are generated client-side and cannot be optimized by next/image. */}
+            <img src={preview.url} alt={`Story ${preview.title}`} />
+            <div className="share-preview-actions">
+              <button type="button" onClick={sharePrepared}>Compartir story</button>
+              <button type="button" onClick={downloadPrepared}>Descargar</button>
+              <button type="button" onClick={copyShareLink}>Copiar link</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      ) : null}
     </>
   );
 }
@@ -1965,6 +2305,7 @@ function ProfileScreen(props: {
   leagueName: string;
   league: LeagueSummary | null;
   currentUserId: Id<"users"> | null;
+  sessionToken: string | null;
   toast: (message: string) => void;
   onShowOnboarding: () => void;
   onUpdate: (profile: { name: string; handle: string; avatar: string; favoriteTeam?: string }) => void;
@@ -1979,6 +2320,7 @@ function ProfileScreenInner({
   leagueName,
   league,
   currentUserId,
+  sessionToken,
   toast,
   onShowOnboarding,
   onUpdate,
@@ -1989,6 +2331,7 @@ function ProfileScreenInner({
   leagueName: string;
   league: LeagueSummary | null;
   currentUserId: Id<"users"> | null;
+  sessionToken: string | null;
   toast: (message: string) => void;
   onShowOnboarding: () => void;
   onUpdate: (profile: { name: string; handle: string; avatar: string; favoriteTeam?: string }) => void;
@@ -2048,6 +2391,7 @@ function ProfileScreenInner({
       <ProfileShareSection
         league={league}
         currentUserId={currentUserId}
+        sessionToken={sessionToken}
         toast={toast}
       />
 
@@ -2228,16 +2572,16 @@ export default function Home() {
 
   const { sessionToken, user, loading: authLoading, signup, login, logout, sendResetCode, resetPasswordWithCode } = useAuth();
   const userId = user?._id ?? null;
-  const myLeagues = useQuery(api.leagues.listForUser, userId ? { userId } : "skip") as LeagueSummary[] | undefined;
+  const myLeagues = useQuery(api.leagues.listForUser, sessionToken ? { sessionToken } : "skip") as LeagueSummary[] | undefined;
   const { activeLeagueId, setActive } = useActiveLeague(myLeagues);
   const activeLeague = useQuery(
     api.leagues.get,
-    activeLeagueId ? { leagueId: activeLeagueId } : "skip"
+    activeLeagueId && sessionToken ? { leagueId: activeLeagueId, sessionToken } : "skip"
   ) as LeagueSummary | null | undefined;
 
   const picksList = useQuery(
     api.picks.listForUserInLeague,
-    activeLeagueId && userId ? { leagueId: activeLeagueId, userId } : "skip"
+    activeLeagueId && sessionToken ? { leagueId: activeLeagueId, sessionToken } : "skip"
   );
 
   const createLeague = useMutation(api.leagues.create);
@@ -2564,7 +2908,7 @@ export default function Home() {
         {screen === "partidos" && (
           <MatchesScreen picks={picks} savePickFor={savePickFor} openPick={openPick} />
         )}
-        {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} />}
+        {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} sessionToken={sessionToken} />}
         {screen === "liga" && sessionToken && (
           <LeagueScreen
             leagueId={activeLeagueId}
@@ -2582,6 +2926,7 @@ export default function Home() {
             leagueName={leagueName}
             league={activeLeague ?? null}
             currentUserId={userId}
+            sessionToken={sessionToken}
             toast={setToast}
             onShowOnboarding={() => setShowOnboarding(true)}
             onUpdate={handleUpdateProfile}

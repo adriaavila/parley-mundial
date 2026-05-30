@@ -58,6 +58,7 @@ export default async function Image({ params }: { params: Promise<{ code: string
       >
         {backgroundImage ? (
           <img
+            alt=""
             src={backgroundImage}
             style={{
               position: "absolute",

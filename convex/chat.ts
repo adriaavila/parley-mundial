@@ -48,10 +48,15 @@ export const send = mutation({
 
 export const list = query({
   args: {
+    sessionToken: v.optional(v.string()),
     leagueId: v.id("leagues"),
     limit: v.optional(v.number()),
   },
-  handler: async (ctx, { leagueId, limit }) => {
+  handler: async (ctx, { sessionToken, leagueId, limit }) => {
+    if (sessionToken) {
+      const user = await requireUser(ctx, sessionToken);
+      await assertMember(ctx, leagueId, user._id);
+    }
     const max = Math.min(Math.max(limit ?? 50, 1), 200);
     const messages = await ctx.db
       .query("chatMessages")
