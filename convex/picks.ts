@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { VALID_FIXTURE, fixtureStart, scorePick, type ResultMap } from "./scoring";
 import { loadResultsMap } from "./results";
 import { requireUser } from "./users";
+import { relatorOnPick } from "./relator";
 
 // Streak = consecutive most-recent finished matches where the user got the
 // result right (or better). Counts back from the latest finished pick.
@@ -94,6 +95,8 @@ export const save = mutation({
           bonus,
           updatedAt: Date.now(),
         });
+        // El Relator taunts a first-time pick (insert only — edits stay quiet).
+        await relatorOnPick(ctx, member.leagueId, user.name, home, away);
       }
     }
 

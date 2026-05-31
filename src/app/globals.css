@@ -1603,6 +1603,15 @@ button:active:not(:disabled) {
   padding: 22px 28px;
 }
 
+/* El Relator (AI referee) — accented system message. */
+.chat-message.relator .chat-name strong {
+  color: var(--lime);
+}
+.chat-message.relator .chat-bubble {
+  border-color: rgba(198, 255, 61, 0.4);
+  background: rgba(198, 255, 61, 0.08);
+}
+
 .gif-card {
   display: grid;
   grid-template-columns: 160px minmax(0, 1fr);
