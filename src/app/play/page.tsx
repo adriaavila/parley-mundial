@@ -1694,7 +1694,8 @@ function LeagueChat({
   const messages = useQuery(api.chat.list, { leagueId, sessionToken, limit: 100 }) as
     | {
         _id: Id<"chatMessages">;
-        userId: Id<"users">;
+        userId?: Id<"users">;
+        author: "user" | "relator";
         name: string;
         avatar: string;
         text: string;
@@ -1763,9 +1764,10 @@ function LeagueChat({
           <div className="chat-empty">Sin mensajes todavía. Rompe el hielo.</div>
         ) : (
           messages.map((message) => {
-            const mine = message.userId === currentUser._id;
+            const isRelator = message.author === "relator";
+            const mine = !isRelator && message.userId === currentUser._id;
             return (
-              <article className={`chat-message ${mine ? "mine" : ""}`} key={message._id}>
+              <article className={`chat-message ${mine ? "mine" : ""} ${isRelator ? "relator" : ""}`} key={message._id}>
                 {!mine ? <span className="chat-avatar">{message.avatar}</span> : null}
                 <div className="chat-stack">
                   {!mine ? (

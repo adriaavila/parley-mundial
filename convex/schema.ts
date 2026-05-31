@@ -66,11 +66,15 @@ export default defineSchema({
   })
     .index("by_user_fixture", ["userId", "fixtureId"])
     .index("by_league_fixture", ["leagueId", "fixtureId"])
-    .index("by_league_user", ["leagueId", "userId"]),
+    .index("by_league_user", ["leagueId", "userId"])
+    .index("by_fixture", ["fixtureId"]),
 
   chatMessages: defineTable({
     leagueId: v.id("leagues"),
-    userId: v.id("users"),
+    // Optional: "El Relator" (AI referee) system messages have no userId.
+    userId: v.optional(v.id("users")),
+    author: v.optional(v.union(v.literal("user"), v.literal("relator"))),
+    relatorKind: v.optional(v.string()),
     text: v.string(),
     createdAt: v.number(),
   })

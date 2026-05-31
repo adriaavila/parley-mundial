@@ -2,6 +2,7 @@ import { mutation, query, type QueryCtx } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 import { requireUser } from "./users";
+import { RELATOR_AVATAR, RELATOR_NAME, relatorOnMention } from "./relator";
 
 const MAX_LEN = 500;
 const RATE_WINDOW_MS = 10_000;
@@ -37,12 +38,20 @@ export const send = mutation({
     const mine = recent.filter((m) => m.userId === user._id).length;
     if (mine >= RATE_MAX) throw new Error("Vas muy rápido, espera unos segundos");
 
-    return await ctx.db.insert("chatMessages", {
+    const messageId = await ctx.db.insert("chatMessages", {
       leagueId,
       userId: user._id,
+      author: "user" as const,
       text: trimmed,
       createdAt: Date.now(),
     });
+
+    // El Relator answers when summoned by name.
+    if (/relator/i.test(trimmed)) {
+      await relatorOnMention(ctx, leagueId);
+    }
+
+    return messageId;
   },
 });
 
@@ -66,18 +75,32 @@ export const list = query({
 
     const out: {
       _id: Id<"chatMessages">;
-      userId: Id<"users">;
+      userId?: Id<"users">;
+      author: "user" | "relator";
       name: string;
       avatar: string;
       text: string;
       createdAt: number;
     }[] = [];
     for (const message of messages) {
+      if (message.author === "relator") {
+        out.push({
+          _id: message._id,
+          author: "relator",
+          name: RELATOR_NAME,
+          avatar: RELATOR_AVATAR,
+          text: message.text,
+          createdAt: message.createdAt,
+        });
+        continue;
+      }
+      if (!message.userId) continue;
       const user = await ctx.db.get(message.userId);
       if (!user) continue;
       out.push({
         _id: message._id,
         userId: message.userId,
+        author: "user",
         name: user.name,
         avatar: user.avatar,
         text: message.text,

@@ -12,6 +12,7 @@ import type * as chat from "../chat.js";
 import type * as crons from "../crons.js";
 import type * as leagues from "../leagues.js";
 import type * as picks from "../picks.js";
+import type * as relator from "../relator.js";
 import type * as results from "../results.js";
 import type * as scoring from "../scoring.js";
 import type * as tournaments from "../tournaments.js";
@@ -28,6 +29,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   leagues: typeof leagues;
   picks: typeof picks;
+  relator: typeof relator;
   results: typeof results;
   scoring: typeof scoring;
   tournaments: typeof tournaments;

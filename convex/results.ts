@@ -2,6 +2,7 @@ import { internalAction, internalMutation, query, type QueryCtx } from "./_gener
 import { internal } from "./_generated/api";
 import { v } from "convex/values";
 import { FIXTURE_STARTS, VALID_FIXTURE, type ResultMap } from "./scoring";
+import { relatorOnResult } from "./relator";
 
 // Build fixtureId -> {home,away} from the results table. Every leaderboard /
 // streak query calls this, so reading the table here is what makes those
@@ -48,9 +49,11 @@ export const upsert = internalMutation({
     if (existing) {
       if (existing.home === home && existing.away === away) return false; // no change, skip write
       await ctx.db.patch(existing._id, { home, away, updatedAt: Date.now() });
+      await relatorOnResult(ctx, fixtureId, home, away);
       return true;
     }
     await ctx.db.insert("results", { fixtureId, home, away, updatedAt: Date.now() });
+    await relatorOnResult(ctx, fixtureId, home, away);
     return true;
   },
 });
