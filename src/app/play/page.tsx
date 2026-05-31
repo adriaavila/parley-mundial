@@ -855,10 +855,12 @@ function LeaderboardScreen({
   leagueId,
   currentUserId,
   sessionToken,
+  onShowOnboarding,
 }: {
   leagueId: Id<"leagues"> | null;
   currentUserId: Id<"users"> | null;
   sessionToken: string | null;
+  onShowOnboarding: () => void;
 }) {
   const [scope, setScope] = useState<BoardScope>("liga");
   const [tab, setTab] = useState<BoardTab>("general");
@@ -940,7 +942,11 @@ function LeaderboardScreen({
       {loading ? (
         <EmptyState message="Cargando tabla…" />
       ) : showEmpty ? (
-        <EmptyState message={emptyMessage} />
+        <EmptyState
+          message={emptyMessage}
+          actionLabel={!leagueId ? "Crea o únete a una liga" : undefined}
+          onAction={!leagueId ? onShowOnboarding : undefined}
+        />
       ) : (
         <>
           <section className="podium" aria-label="Podio">
@@ -1019,11 +1025,31 @@ function LeaderboardCard({
   );
 }
 
-function EmptyState({ message, glyph = "⚽" }: { message: string; glyph?: string }) {
+function EmptyState({
+  message,
+  glyph = "⚽",
+  actionLabel,
+  onAction,
+}: {
+  message: string;
+  glyph?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
   return (
     <div className="empty-state">
       <span className="glyph" aria-hidden>{glyph}</span>
       <p>{message}</p>
+      {actionLabel && onAction ? (
+        <button
+          type="button"
+          className="save-pick"
+          onClick={onAction}
+          style={{ width: "auto", padding: "12px 24px", marginTop: "10px" }}
+        >
+          {actionLabel}
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -1439,6 +1465,42 @@ function AuthScreen({
                     : "Restablecer contraseña"}
           </button>
 
+          {(mode === "signup" || mode === "login") && (
+            <>
+              <div style={{ display: "flex", alignItems: "center", gap: "12px", margin: "6px 0 2px" }}>
+                <span style={{ flex: 1, height: "1px", background: "var(--line)" }} />
+                <span style={{ fontFamily: "var(--mono)", fontSize: "10px", color: "var(--ink-2)", letterSpacing: "0.12em" }}>O</span>
+                <span style={{ flex: 1, height: "1px", background: "var(--line)" }} />
+              </div>
+              <a
+                href={`/api/auth/google${inviteCode ? `?join=${encodeURIComponent(inviteCode)}` : ""}`}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "10px",
+                  width: "100%",
+                  padding: "13px",
+                  borderRadius: "12px",
+                  background: "#ffffff",
+                  color: "#1f1f1f",
+                  fontWeight: "bold",
+                  fontSize: "15px",
+                  textDecoration: "none",
+                  border: "1px solid var(--line)",
+                }}
+              >
+                <svg width="18" height="18" viewBox="0 0 18 18" aria-hidden="true">
+                  <path fill="#4285F4" d="M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62z" />
+                  <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.84.86-3.04.86-2.34 0-4.32-1.58-5.02-3.7H.96v2.32A9 9 0 0 0 9 18z" />
+                  <path fill="#FBBC05" d="M3.98 10.72a5.4 5.4 0 0 1 0-3.44V4.96H.96a9 9 0 0 0 0 8.08l3.02-2.32z" />
+                  <path fill="#EA4335" d="M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58C13.46.89 11.42 0 9 0A9 9 0 0 0 .96 4.96l3.02 2.32C4.68 5.16 6.66 3.58 9 3.58z" />
+                </svg>
+                Continuar con Google
+              </a>
+            </>
+          )}
+
           {mode === "forgot" && (
             <div style={{ display: "flex", justifyContent: "center", marginTop: "12px" }}>
               <button
@@ -1521,6 +1583,7 @@ function LeagueScreen({
   onInvite,
   currentUser,
   sessionToken,
+  onShowOnboarding,
 }: {
   leagueId: Id<"leagues"> | null;
   leagues: LeagueSummary[];
@@ -1529,6 +1592,7 @@ function LeagueScreen({
   onInvite: () => void;
   currentUser: AuthUser;
   sessionToken: string;
+  onShowOnboarding: () => void;
 }) {
   const members = useQuery(api.leagues.members, leagueId ? { leagueId, sessionToken } : "skip");
   const recent = useQuery(api.picks.recentInLeague, leagueId ? { leagueId, sessionToken } : "skip");
@@ -1542,7 +1606,11 @@ function LeagueScreen({
         <p>Miembros activos, chat y picks recientes con datos reales de tu liga.</p>
       </div>
       {!leagueId ? (
-        <EmptyState message="Aún no estás en una liga. Crea una desde el botón de onboarding." />
+        <EmptyState
+          message="Aún no estás en una liga."
+          actionLabel="Crea o únete a una liga"
+          onAction={onShowOnboarding}
+        />
       ) : (
         <>
           <section className="content-card glass league-strip">
@@ -2061,11 +2129,13 @@ function ProfileShareSection({
   currentUserId,
   sessionToken,
   toast,
+  onShowOnboarding,
 }: {
   league: LeagueSummary | null;
   currentUserId: Id<"users"> | null;
   sessionToken: string | null;
   toast: (message: string) => void;
+  onShowOnboarding: () => void;
 }) {
   const rows = useQuery(api.picks.leagueLeaderboard, league && sessionToken ? { leagueId: league._id, sessionToken } : "skip");
   const myIndex = rows?.findIndex((row: LeaderboardRow) => row.userId === currentUserId) ?? -1;
@@ -2286,7 +2356,11 @@ function ProfileShareSection({
         <p>Cards 9:16 listas para ranking, invitación, top 5, predicción perfecta y rivalidad.</p>
       </div>
       {!league ? (
-        <EmptyState message="Crea o únete a una liga para compartir." />
+        <EmptyState
+          message="Crea o únete a una liga para compartir."
+          actionLabel="Crea o únete a una liga"
+          onAction={onShowOnboarding}
+        />
       ) : (
         <div className="share-grid">
           <button className="share-tile glass" disabled={!!preparing} onClick={() => prepareShare("invite")}><strong>{preparing === "invite" ? "Armando..." : "Invitación"}</strong><span>Únete a mi liga · {league.code}</span></button>
@@ -2413,6 +2487,7 @@ function ProfileScreenInner({
         currentUserId={currentUserId}
         sessionToken={sessionToken}
         toast={toast}
+        onShowOnboarding={onShowOnboarding}
       />
 
       <div className="settings-grid">
@@ -2928,7 +3003,7 @@ export default function Home() {
         {screen === "partidos" && (
           <MatchesScreen picks={picks} savePickFor={savePickFor} openPick={openPick} />
         )}
-        {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} sessionToken={sessionToken} />}
+        {screen === "tabla" && <LeaderboardScreen leagueId={activeLeagueId} currentUserId={userId} sessionToken={sessionToken} onShowOnboarding={() => setShowOnboarding(true)} />}
         {screen === "liga" && sessionToken && (
           <LeagueScreen
             leagueId={activeLeagueId}
@@ -2938,6 +3013,7 @@ export default function Home() {
             onInvite={handleInvite}
             currentUser={user}
             sessionToken={sessionToken}
+            onShowOnboarding={() => setShowOnboarding(true)}
           />
         )}
         {screen === "perfil" && (
